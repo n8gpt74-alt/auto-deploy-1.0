@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+:root {
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+@theme inline {
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body { font-family: var(--font-space-grotesk), sans-serif; }
