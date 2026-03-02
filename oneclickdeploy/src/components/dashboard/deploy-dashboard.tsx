@@ -489,6 +489,35 @@ export function DeployDashboard() {
         },
       )
     : "#";
+
+  const deployDisabled = !selectedRepo || !selectedBranch;
+
+  const repoStateBadge =
+    reposLoading
+      ? buildStateBadge("loading", "Репозитории: загрузка")
+      : reposError
+        ? buildStateBadge("error", "Репозитории: ошибка")
+        : repos.length === 0
+          ? buildStateBadge("warning", "Репозитории: пусто")
+          : buildStateBadge("success", `Репозитории: ${repos.length}`);
+
+  const branchStateBadge =
+    !selectedRepo
+      ? buildStateBadge("neutral", "Ветка: не выбрана")
+      : branchesLoading
+        ? buildStateBadge("loading", "Ветки: загрузка")
+        : branchesError
+          ? buildStateBadge("error", "Ветки: ошибка")
+          : branches.length === 0
+            ? buildStateBadge("warning", "Ветки: пусто")
+            : buildStateBadge("success", `Ветки: ${branches.length}`);
+
+  const selectedBranchBadge =
+    !selectedBranchItem
+      ? buildStateBadge("neutral", "Нет выбранной ветки")
+      : selectedBranchItem.protected
+        ? buildStateBadge("warning", "Защищенная ветка")
+        : buildStateBadge("success", "Готово к деплою");
   return (
     <main className="relative min-h-screen bg-black text-white font-mono selection:bg-[#ff4500] selection:text-black">
       <div className="absolute inset-0 z-0 pointer-events-none bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:50px_50px]" />
