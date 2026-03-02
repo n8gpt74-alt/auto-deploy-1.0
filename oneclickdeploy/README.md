@@ -4,8 +4,9 @@ Minimal web service: login with GitHub, pick repository + branch, open one-click
 
 - Deploy to Vercel
 - Deploy to Netlify
+- Deploy to Cloudflare (Workers Deploy Button)
 
-Advanced settings are supported with a local browser preset (single-slot save/load/clear).
+Advanced settings are supported with local named templates, auto-recommendations from repository config, and provider capability hints.
 
 ## Stack
 
@@ -28,7 +29,9 @@ Advanced settings are supported with a local browser preset (single-slot save/lo
 - Repository list with pagination (`Load more repositories`).
 - Branch list with pagination (`Load more branches`).
 - Advanced settings (root/build/output/env) included in deploy URL generation where supported.
-- Local deploy preset in browser storage (single-slot): save/load/clear.
+- Local deploy templates in browser storage (multi-slot): save/load/delete/clear-all.
+- Auto-recommendation endpoint for build config detection based on repository files (`/api/github/repo-config`).
+- Provider capability matrix in dashboard (branch/build/env behavior visibility).
 
 ## Project structure
 
@@ -40,6 +43,7 @@ src/
       github/
         repos/route.ts
         branches/route.ts
+        repo-config/route.ts
     dashboard/page.tsx
     login/page.tsx
     logout/page.tsx
@@ -91,6 +95,14 @@ If Vercel changes flow, update URL generation in `src/lib/deploy-links.ts` (`cre
 - Build command / output directory are not passed (not reliably supported as button query params).
 
 If Netlify changes flow, update `src/lib/deploy-links.ts` (`createNetlifyDeployUrl`).
+
+### Cloudflare
+
+- Flow: `https://deploy.workers.cloudflare.com/?url=...`
+- Current support in app: Cloudflare Workers Deploy Button flow.
+- Current limitation: this is not a Cloudflare Pages deploy flow.
+
+If Cloudflare changes flow, update `src/lib/deploy-links.ts` (`createCloudflareDeployUrl`).
 
 ## GitHub OAuth App setup
 

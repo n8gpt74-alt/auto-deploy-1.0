@@ -21,13 +21,14 @@ export default function HomePage() {
           One-click deploy from GitHub to Vercel, Netlify, or Cloudflare
         </h1>
         <p className="mt-5 max-w-2xl text-base text-slate-300 sm:text-lg">
-          Быстрый запуск деплоя с визуальными статусами, анимированным интерфейсом и удобным мобильным экраном.
+          Выбери репозиторий и ветку, получи авто-рекомендации конфигурации и запускай деплой с прозрачными ограничениями каждого провайдера.
         </p>
 
         <div className="mt-6 flex flex-wrap gap-2">
           <StatusBadge tone="success" label="3D Motion UI" />
           <StatusBadge tone="success" label="Mobile Optimized" />
           <StatusBadge tone="neutral" label="GitHub Powered" />
+          <StatusBadge tone="neutral" label="Provider limits visible" />
         </div>
 
         <div className="mt-8 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:flex-wrap">
@@ -52,6 +53,11 @@ export default function HomePage() {
             Login page
           </Link>
         </div>
+
+        <p className="mt-4 max-w-3xl text-xs text-slate-400 sm:text-sm">
+          Для приватных репозиториев требуется GitHub OAuth scope <code>repo</code>. Доступ используется только на сервере для чтения репозиториев/веток и не
+          прокидывается в client session payload.
+        </p>
       </section>
     </main>
   );

@@ -19,13 +19,19 @@ export default function LoginPage() {
             <p className="mb-4 text-xs uppercase tracking-[0.3em] text-cyan-300">Deploy Buttons</p>
             <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">Sign in with GitHub</h1>
             <p className="mt-4 max-w-xl text-sm text-slate-300 sm:text-base">
-              Авторизуйся, чтобы загрузить репозитории, выбрать ветку и открыть deploy flow в Vercel, Netlify или Cloudflare.
+              Авторизуйся, чтобы загрузить репозитории и ветки, получить авто-рекомендации конфигурации и открыть deploy flow в Vercel, Netlify или Cloudflare.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
               <StatusBadge tone="success" label="Secure OAuth" />
               <StatusBadge tone="neutral" label="One-click deploy" />
+              <StatusBadge tone="neutral" label="No client-side token exposure" />
             </div>
+
+            <p className="mt-4 text-xs text-slate-400">
+              Для доступа к приватным репозиториям нужен scope <code>repo</code>. Токен хранится на серверной стороне и используется только для GitHub API
+              запросов.
+            </p>
 
             <div className="mt-8">
               <Button className="w-full sm:w-auto" onClick={() => signIn("github", { callbackUrl: "/dashboard" })}>

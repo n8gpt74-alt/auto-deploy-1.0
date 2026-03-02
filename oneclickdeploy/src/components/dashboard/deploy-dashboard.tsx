@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createCloudflareDeployUrl, createNetlifyDeployUrl, createVercelDeployUrl } from "@/lib/deploy-links";
-import { clearDeployPreset, loadDeployPreset, saveDeployPreset } from "@/lib/deploy-preset";
+import {
+  clearDeployPreset,
+  deleteDeployPresetItem,
+  loadDeployPresetItems,
+  migratePresetStorageToV2,
+  saveNamedDeployPreset,
+  type DeployPresetFields,
+  type DeployPresetItem,
+} from "@/lib/deploy-preset";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,6 +56,16 @@ type PresetNotice = {
   message: string;
 };
 
+type RepoConfigResponse = {
+  framework?: string;
+  recommendation?: {
+    rootDirectory?: string;
+    buildCommand?: string;
+    outputDirectory?: string;
+  };
+  notes?: string[];
+};
+
 const REPO_PAGE_SIZE = 30;
 const BRANCH_PAGE_SIZE = 100;
 
@@ -73,6 +91,11 @@ export function DeployDashboard() {
   const [buildCommand, setBuildCommand] = useState("");
   const [outputDirectory, setOutputDirectory] = useState("");
   const [envText, setEnvText] = useState("");
+  const [presetName, setPresetName] = useState("");
+  const [presetItems, setPresetItems] = useState<DeployPresetItem[]>([]);
+  const [repoRecommendationNotes, setRepoRecommendationNotes] = useState<string[]>([]);
+  const [repoRecommendationFramework, setRepoRecommendationFramework] = useState<string>("unknown");
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
 
   const [reposLoading, setReposLoading] = useState(true);
   const [branchesLoading, setBranchesLoading] = useState(false);
@@ -84,6 +107,33 @@ export function DeployDashboard() {
   const [branchesPage, setBranchesPage] = useState(1);
   const [branchesHasNextPage, setBranchesHasNextPage] = useState(false);
   const [reposRefreshNonce, setReposRefreshNonce] = useState(0);
+
+  function applyDeployFields(fields: DeployPresetFields) {
+    setRootDirectory(fields.rootDirectory);
+    setBuildCommand(fields.buildCommand);
+    setOutputDirectory(fields.outputDirectory);
+    setEnvText(fields.envText);
+  }
+
+  function readPresetItemsIntoState() {
+    const result = loadDeployPresetItems();
+    if (!result.ok) {
+      setPresetNotice({ tone: "error", message: result.error });
+      return;
+    }
+
+    setPresetItems(result.items);
+  }
+
+  useEffect(() => {
+    const migrateResult = migratePresetStorageToV2();
+    if (!migrateResult.ok) {
+      setPresetNotice({ tone: "error", message: migrateResult.error });
+      return;
+    }
+
+    readPresetItemsIntoState();
+  }, []);
 
   useEffect(() => {
     async function loadRepos() {
@@ -224,7 +274,12 @@ export function DeployDashboard() {
     });
   }, [selectedRepo, branchesPage]);
 
-  const deployConfig = {
+  useEffect(() => {
+    setRepoRecommendationFramework("unknown");
+    setRepoRecommendationNotes([]);
+  }, [selectedRepoId]);
+
+  const deployConfig: DeployPresetFields = {
     rootDirectory,
     buildCommand,
     outputDirectory,
@@ -232,32 +287,31 @@ export function DeployDashboard() {
   };
 
   function handleSavePreset() {
-    const result = saveDeployPreset(deployConfig);
+    const result = saveNamedDeployPreset(presetName, deployConfig);
     if (!result.ok) {
       setPresetNotice({ tone: "error", message: result.error });
       return;
     }
 
-    setPresetNotice({ tone: "success", message: "Preset saved locally." });
+    setPresetName("");
+    readPresetItemsIntoState();
+    setPresetNotice({ tone: "success", message: `Template \"${result.item.name}\" saved locally.` });
   }
 
-  function handleLoadPreset() {
-    const result = loadDeployPreset();
+  function handleLoadPreset(item: DeployPresetItem) {
+    applyDeployFields(item);
+    setPresetNotice({ tone: "success", message: `Template \"${item.name}\" loaded.` });
+  }
+
+  function handleDeletePreset(id: string) {
+    const result = deleteDeployPresetItem(id);
     if (!result.ok) {
       setPresetNotice({ tone: "error", message: result.error });
       return;
     }
 
-    if (!result.preset) {
-      setPresetNotice({ tone: "error", message: "No saved preset found." });
-      return;
-    }
-
-    setRootDirectory(result.preset.rootDirectory);
-    setBuildCommand(result.preset.buildCommand);
-    setOutputDirectory(result.preset.outputDirectory);
-    setEnvText(result.preset.envText);
-    setPresetNotice({ tone: "success", message: "Preset loaded." });
+    readPresetItemsIntoState();
+    setPresetNotice({ tone: "success", message: "Template removed." });
   }
 
   function handleClearPreset() {
@@ -280,6 +334,47 @@ export function DeployDashboard() {
     setReposHasNextPage(false);
     setBranchesHasNextPage(false);
     setReposRefreshNonce((current) => current + 1);
+  }
+
+  async function handleAutoRecommendConfig() {
+    if (!selectedRepo) {
+      setPresetNotice({ tone: "error", message: "Select a repository first." });
+      return;
+    }
+
+    setRecommendationLoading(true);
+    try {
+      const params = new URLSearchParams({
+        owner: selectedRepo.owner,
+        repo: selectedRepo.name,
+      });
+
+      const res = await fetch(`/api/github/repo-config?${params.toString()}`);
+      const json = (await res.json()) as RepoConfigResponse & ApiError;
+
+      if (!res.ok) {
+        setPresetNotice({ tone: "error", message: formatRateLimitError(json) });
+        return;
+      }
+
+      const recommendation = json.recommendation;
+      if (recommendation) {
+        applyDeployFields({
+          rootDirectory: recommendation.rootDirectory ?? "",
+          buildCommand: recommendation.buildCommand ?? "",
+          outputDirectory: recommendation.outputDirectory ?? "",
+          envText,
+        });
+      }
+
+      setRepoRecommendationFramework(json.framework ?? "unknown");
+      setRepoRecommendationNotes(json.notes ?? []);
+      setPresetNotice({ tone: "success", message: "Auto-recommendation applied." });
+    } catch {
+      setPresetNotice({ tone: "error", message: "Failed to auto-detect repository configuration." });
+    } finally {
+      setRecommendationLoading(false);
+    }
   }
 
   const vercelUrl = selectedRepo
@@ -537,16 +632,70 @@ export function DeployDashboard() {
                   </p>
                 </div>
 
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-slate-200">Auto recommendations</p>
+                    <Button
+                      type="button"
+                      className="w-full sm:w-auto"
+                      variant="outline"
+                      disabled={recommendationLoading || !selectedRepo}
+                      onClick={handleAutoRecommendConfig}
+                    >
+                      {recommendationLoading ? "Detecting..." : "Auto-detect from repository"}
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Detected framework: <span className="text-slate-200">{repoRecommendationFramework}</span>
+                  </p>
+                  {repoRecommendationNotes.length > 0 ? (
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-300">
+                      {repoRecommendationNotes.map((note) => (
+                        <li key={note}>{note}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+
                 <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap">
+                  <Input
+                    placeholder="Template name (e.g. Next.js default)"
+                    value={presetName}
+                    onChange={(event) => setPresetName(event.target.value)}
+                    className="w-full sm:max-w-xs"
+                  />
                   <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleSavePreset}>
-                    Save preset
-                  </Button>
-                  <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleLoadPreset}>
-                    Load preset
+                    Save template
                   </Button>
                   <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleClearPreset}>
-                    Clear preset
+                    Clear all templates
                   </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm text-slate-300">Saved templates</p>
+                  {presetItems.length === 0 ? (
+                    <p className="text-xs text-slate-400">No templates saved yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {presetItems.map((item) => (
+                        <div key={item.id} className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-sm text-slate-100">{item.name}</p>
+                            <p className="text-xs text-slate-400">Updated: {new Date(item.updatedAt).toLocaleString()}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => handleLoadPreset(item)}>
+                              Load
+                            </Button>
+                            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => handleDeletePreset(item.id)}>
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {presetNotice ? (
@@ -629,6 +778,40 @@ export function DeployDashboard() {
               <p>Vercel: branch is not passed because Deploy Button has no stable documented branch parameter.</p>
               <p>Netlify: branch is passed via query `branch`, root directory via `base`.</p>
               <p>Cloudflare: opens Workers Deploy Button (`url` param). This flow supports Workers apps, not Pages apps.</p>
+            </div>
+
+            <div className="mt-3 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-slate-400">Provider capability matrix</p>
+              <table className="min-w-full text-left text-xs text-slate-200">
+                <thead>
+                  <tr className="text-slate-400">
+                    <th className="pb-2 pr-4 font-medium">Provider</th>
+                    <th className="pb-2 pr-4 font-medium">Branch support</th>
+                    <th className="pb-2 pr-4 font-medium">Build/output overrides</th>
+                    <th className="pb-2 pr-4 font-medium">Env behavior</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-slate-800">
+                    <td className="py-2 pr-4">Vercel</td>
+                    <td className="py-2 pr-4">No (button flow)</td>
+                    <td className="py-2 pr-4">Yes</td>
+                    <td className="py-2 pr-4">Keys only</td>
+                  </tr>
+                  <tr className="border-t border-slate-800">
+                    <td className="py-2 pr-4">Netlify</td>
+                    <td className="py-2 pr-4">Yes</td>
+                    <td className="py-2 pr-4">Partial (base only)</td>
+                    <td className="py-2 pr-4">Key/value in URL hash</td>
+                  </tr>
+                  <tr className="border-t border-slate-800">
+                    <td className="py-2 pr-4">Cloudflare</td>
+                    <td className="py-2 pr-4">No (Workers button)</td>
+                    <td className="py-2 pr-4">No</td>
+                    <td className="py-2 pr-4">Repository URL only</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
             <div className="pt-2">
