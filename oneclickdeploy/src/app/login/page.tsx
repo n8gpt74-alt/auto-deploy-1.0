@@ -2,45 +2,40 @@
 
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { IconGithub } from "@/components/ui/icons";
 
 export default function LoginPage() {
   return (
-    <main className="relative min-h-screen overflow-hidden text-slate-100">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_20%,rgba(6,182,212,0.18),transparent_38%),radial-gradient(circle_at_90%_5%,rgba(20,184,166,0.16),transparent_35%)]" />
-      <div className="floating-orb floating-orb--cyan -left-16 top-20 size-56 opacity-65" />
-      <div className="floating-orb floating-orb--teal -right-14 top-14 size-44 opacity-65" />
+    <main className="relative min-h-screen overflow-hidden bg-black text-white font-mono selection:bg-[#ff4500] selection:text-black">
+      <div className="absolute inset-0 z-0 pointer-events-none bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:50px_50px]" />
+      
+      <section className="relative z-10 mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-4 py-12 sm:px-6 sm:py-16">
+        <div className="border border-[#333333] bg-black/80 backdrop-blur-md p-6 sm:p-10 brutalist-shadow">
+          <p className="mb-4 text-sm uppercase tracking-[0.4em] text-[#ff4500] font-bold border-l-2 border-[#ff4500] pl-4">Протокол Деплоя</p>
+          <h1 className="text-4xl sm:text-5xl font-black uppercase leading-[0.9] tracking-tighter font-sans">Вход через GitHub</h1>
+          <p className="mt-6 max-w-xl text-sm sm:text-base text-gray-400">
+            Авторизуйся, чтобы загрузить репозитории и ветки, получить авто-рекомендации конфигурации и открыть deploy flow в Vercel, Netlify или Cloudflare.
+          </p>
 
-      <section className="relative mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-4 py-12 sm:px-6 sm:py-16">
-        <Card className="border-cyan-500/20">
-          <CardContent className="p-6 sm:p-8">
-            <p className="mb-4 text-xs uppercase tracking-[0.3em] text-cyan-300">Deploy Buttons</p>
-            <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">Sign in with GitHub</h1>
-            <p className="mt-4 max-w-xl text-sm text-slate-300 sm:text-base">
-              Авторизуйся, чтобы загрузить репозитории и ветки, получить авто-рекомендации конфигурации и открыть deploy flow в Vercel, Netlify или Cloudflare.
-            </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <StatusBadge tone="success" label="Безопасный OAuth" />
+            <StatusBadge tone="neutral" label="Деплой в один клик" />
+            <StatusBadge tone="warning" label="Изолированный Токен" />
+          </div>
 
-            <div className="mt-5 flex flex-wrap gap-2">
-              <StatusBadge tone="success" label="Secure OAuth" />
-              <StatusBadge tone="neutral" label="One-click deploy" />
-              <StatusBadge tone="neutral" label="No client-side token exposure" />
-            </div>
+          <p className="mt-8 text-xs text-gray-600">
+            Для доступа к приватным репозиториям нужен scope [repo]. Токен хранится на серверной стороне и используется только для GitHub API
+            запросов.
+          </p>
 
-            <p className="mt-4 text-xs text-slate-400">
-              Для доступа к приватным репозиториям нужен scope <code>repo</code>. Токен хранится на серверной стороне и используется только для GitHub API
-              запросов.
-            </p>
-
-            <div className="mt-8">
-              <Button className="w-full sm:w-auto" onClick={() => signIn("github", { callbackUrl: "/dashboard" })}>
-                <IconGithub className="size-4" />
-                Login with GitHub
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <div className="mt-10 border-t border-[#333333] pt-8">
+            <Button className="w-full sm:w-auto text-base" onClick={() => signIn("github", { callbackUrl: "/dashboard" })}>
+              <IconGithub className="size-5 mr-2" />
+              Войти через GitHub
+            </Button>
+          </div>
+        </div>
       </section>
     </main>
   );

@@ -478,8 +478,6 @@ export function DeployDashboard() {
         },
         deployConfig,
       )
-    : "#";
-
   const cloudflareUrl = selectedRepo
     ? createCloudflareDeployUrl(
         {
@@ -490,84 +488,51 @@ export function DeployDashboard() {
         },
       )
     : "#";
-
-  const deployDisabled = !selectedRepo || !selectedBranch;
-
-  const repoStateBadge =
-    reposLoading
-      ? buildStateBadge("loading", "Repositories: loading")
-      : reposError
-        ? buildStateBadge("error", "Repositories: failed")
-        : repos.length === 0
-          ? buildStateBadge("warning", "Repositories: empty")
-          : buildStateBadge("success", `Repositories: ${repos.length}`);
-
-  const branchStateBadge =
-    !selectedRepo
-      ? buildStateBadge("neutral", "Branch: not selected")
-      : branchesLoading
-        ? buildStateBadge("loading", "Branch: loading")
-        : branchesError
-          ? buildStateBadge("error", "Branch: failed")
-          : branches.length === 0
-            ? buildStateBadge("warning", "Branch: empty")
-            : buildStateBadge("success", `Branches: ${branches.length}`);
-
-  const selectedBranchBadge =
-    !selectedBranchItem
-      ? buildStateBadge("neutral", "No branch selected")
-      : selectedBranchItem.protected
-        ? buildStateBadge("warning", "Protected branch")
-        : buildStateBadge("success", "Ready to deploy");
-
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="floating-orb floating-orb--cyan -left-24 top-8 size-72 opacity-70" />
-        <div className="floating-orb floating-orb--teal -right-20 top-12 size-60 opacity-65" />
-        <div className="floating-orb floating-orb--cyan bottom-12 right-1/3 size-52 opacity-45" />
-      </div>
-      <section className="relative mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:py-12">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <main className="relative min-h-screen bg-black text-white font-mono selection:bg-[#ff4500] selection:text-black">
+      <div className="absolute inset-0 z-0 pointer-events-none bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:50px_50px]" />
+      
+      <section className="relative z-10 mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:py-12">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between border-b border-[#333333] pb-6">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Deploy Buttons</p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">GitHub -&gt; Vercel / Netlify / Cloudflare</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-300 sm:text-base">
-              Choose repository and branch, monitor status chips, and open provider setup with prefilled parameters.
+            <p className="text-sm uppercase tracking-[0.4em] text-[#ff4500] font-bold">Протокол Деплоя</p>
+            <h1 className="mt-2 text-2xl font-black uppercase tracking-tight sm:text-3xl md:text-4xl font-sans">GitHub -&gt; Vercel / Netlify / Cloudflare</h1>
+            <p className="mt-2 max-w-2xl text-sm text-gray-400 sm:text-base">
+              Выберите репозиторий и ветку, проверьте статус и откройте окно провайдера с заполненными параметрами.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <StatusBadge {...repoStateBadge} />
               <StatusBadge {...branchStateBadge} />
-              <StatusBadge {...selectedBranchBadge} className={selectedBranchItem?.protected ? "status-pulse" : ""} />
+              <StatusBadge {...selectedBranchBadge} className={selectedBranchItem?.protected ? "animate-pulse border-red-500 text-red-500" : ""} />
             </div>
           </div>
           <Link
             href="/logout"
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-600/80 bg-slate-900/60 px-4 text-sm transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-800/80"
+            className="inline-flex h-12 uppercase tracking-widest items-center justify-center gap-2 rounded-none px-6 text-sm font-bold bg-transparent border border-[#333333] text-white hover:border-[#ff4500] hover:text-[#ff4500] shadow-[4px_4px_0px_0px_#ff4500] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_#ff4500]"
           >
             <IconLogout className="size-4" />
-            Logout
+            Выйти
           </Link>
         </div>
 
-        <Card className="border-cyan-500/20">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <IconRepo className="size-4 text-cyan-300" />
-              Repository selection
+        <Card className="rounded-none border-[#333333] bg-black brutalist-shadow mb-6">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#333333] bg-[#111]">
+            <CardTitle className="flex items-center gap-2 uppercase font-black tracking-widest text-[#ff4500]">
+              <IconRepo className="size-4" />
+              Выбор репозитория
             </CardTitle>
-            <StatusBadge tone={deployDisabled ? "warning" : "success"} label={deployDisabled ? "Deployment blocked" : "Deployment ready"} />
+            <StatusBadge tone={deployDisabled ? "warning" : "success"} label={deployDisabled ? "Блокировка" : "Готово"} />
           </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <label htmlFor="repo-search" className="text-sm text-slate-300">
-                Search repository
+          <CardContent className="pt-6">
+            <div className="space-y-3 mb-6">
+              <label htmlFor="repo-search" className="text-sm font-bold uppercase tracking-widest">
+                Поиск репозитория
               </label>
               <div className="relative">
-                <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
                 <Input
                   id="repo-search"
-                  className="pl-9"
+                  className="pl-9 h-12 rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
                   placeholder="owner/repo"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -577,9 +542,9 @@ export function DeployDashboard() {
 
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
-                <label htmlFor="repo-select" className="inline-flex items-center gap-2 text-sm text-slate-300">
-                  <IconGithub className="size-4 text-cyan-300" />
-                  Repository
+                <label htmlFor="repo-select" className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]">
+                  <IconGithub className="size-4" />
+                  Репозиторий
                 </label>
                 <select
                   id="repo-select"
@@ -591,10 +556,10 @@ export function DeployDashboard() {
                     setSelectedBranch("");
                     setSelectedRepoId(event.target.value);
                   }}
-                  className="h-11 w-full rounded-xl border border-slate-700/80 bg-slate-900/70 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.15)]"
+                  className="h-12 w-full rounded-none border border-[#333333] bg-black px-3 text-sm text-white outline-none transition focus:border-[#ff4500] focus:ring-1 focus:ring-[#ff4500]"
                   disabled={reposLoading || filteredRepos.length === 0}
                 >
-                  {filteredRepos.length === 0 ? <option value="">No repositories</option> : null}
+                  {filteredRepos.length === 0 ? <option value="">Нет репозиториев</option> : null}
                   {filteredRepos.map((repo) => (
                     <option key={repo.id} value={String(repo.id)}>
                       {repo.fullName}
@@ -604,18 +569,18 @@ export function DeployDashboard() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="branch-select" className="inline-flex items-center gap-2 text-sm text-slate-300">
-                  <IconBranch className="size-4 text-teal-300" />
-                  Branch
+                <label htmlFor="branch-select" className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]">
+                  <IconBranch className="size-4" />
+                  Ветка
                 </label>
                 <select
                   id="branch-select"
                   value={selectedBranch}
                   onChange={(event) => setSelectedBranch(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-slate-700/80 bg-slate-900/70 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.15)]"
+                  className="h-12 w-full rounded-none border border-[#333333] bg-black px-3 text-sm text-white outline-none transition focus:border-[#ff4500] focus:ring-1 focus:ring-[#ff4500]"
                   disabled={branchesLoading || branches.length === 0}
                 >
-                  {branches.length === 0 ? <option value="">No branches</option> : null}
+                  {branches.length === 0 ? <option value="">Нет веток</option> : null}
                   {branches.map((branch) => (
                     <option key={branch.name} value={branch.name}>
                       {branch.name}
@@ -625,21 +590,21 @@ export function DeployDashboard() {
               </div>
             </div>
 
-            {reposLoading ? <p className="text-sm text-slate-400">Loading repositories...</p> : null}
+            {reposLoading ? <p className="text-sm text-gray-400 font-mono mt-4">Загрузка репозиториев...</p> : null}
             {!reposLoading && repos.length === 0 && !reposError ? (
-              <p className="rounded-xl border border-dashed border-slate-700 p-4 text-sm text-slate-300">
-                No repositories found. Verify that your OAuth app includes the `repo` scope.
+              <p className="mt-4 border border-[#333333] p-4 text-sm text-gray-400 font-mono">
+                Репозитории не найдены. Убедитесь, что ваше OAuth приложение имеет scope [repo].
               </p>
             ) : null}
-            {reposError ? <p className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-300">{reposError}</p> : null}
+            {reposError ? <p className="mt-4 border border-red-900 bg-black text-red-500 p-4 text-sm font-mono font-bold">{reposError}</p> : null}
             {branchesError ? (
-              <p className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-300">{branchesError}</p>
+              <p className="mt-4 border border-red-900 bg-black text-red-500 p-4 text-sm font-mono font-bold">{branchesError}</p>
             ) : null}
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               {reposHasNextPage ? (
                 <Button type="button" className="w-full sm:w-auto" variant="outline" disabled={reposLoading} onClick={() => setRepoPage((current) => current + 1)}>
-                  {reposLoading ? "Loading repositories..." : "Load more repositories"}
+                  {reposLoading ? "Загрузка..." : "Загрузить больше репозиториев"}
                 </Button>
               ) : null}
               {selectedRepo && branchesHasNextPage ? (
@@ -650,70 +615,74 @@ export function DeployDashboard() {
                   disabled={branchesLoading}
                   onClick={() => setBranchesPage((current) => current + 1)}
                 >
-                  {branchesLoading ? "Loading branches..." : "Load more branches"}
+                  {branchesLoading ? "Загрузка..." : "Загрузить больше веток"}
                 </Button>
               ) : null}
             </div>
 
             <Accordion>
-              <AccordionTrigger className="inline-flex items-center gap-2"><IconSettings className="size-4 text-slate-300" />Advanced settings (optional)</AccordionTrigger>
+              <AccordionTrigger className="inline-flex items-center gap-2 uppercase tracking-widest font-bold"><IconSettings className="size-4 text-[#ff4500]" />Дополнительные настройки (Опционально)</AccordionTrigger>
               <AccordionContent>
-                <div className="grid gap-4 lg:grid-cols-3">
+                <div className="grid gap-4 lg:grid-cols-3 pt-4">
                   <div className="space-y-2">
-                    <label htmlFor="root-directory" className="text-sm text-slate-300">
-                      Root directory
+                    <label htmlFor="root-directory" className="text-sm font-bold uppercase tracking-widest">
+                      Корневая директория (Root)
                     </label>
                     <Input
                       id="root-directory"
                       placeholder="apps/web"
                       value={rootDirectory}
                       onChange={(event) => setRootDirectory(event.target.value)}
+                      className="rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label htmlFor="build-command" className="text-sm text-slate-300">
-                      Build command
+                    <label htmlFor="build-command" className="text-sm font-bold uppercase tracking-widest">
+                      Команда сборки (Build)
                     </label>
                     <Input
                       id="build-command"
                       placeholder="npm run build"
                       value={buildCommand}
                       onChange={(event) => setBuildCommand(event.target.value)}
+                      className="rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label htmlFor="output-directory" className="text-sm text-slate-300">
-                      Output directory
+                    <label htmlFor="output-directory" className="text-sm font-bold uppercase tracking-widest">
+                      Директория вывода (Output)
                     </label>
                     <Input
                       id="output-directory"
                       placeholder=".next"
                       value={outputDirectory}
                       onChange={(event) => setOutputDirectory(event.target.value)}
+                      className="rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label htmlFor="env-vars" className="text-sm text-slate-300">
-                    Environment variables (KEY=VALUE, one per line)
+                <div className="space-y-2 mt-4">
+                  <label htmlFor="env-vars" className="text-sm font-bold uppercase tracking-widest">
+                    Переменные окружения (KEY=VALUE, по одной на строку)
                   </label>
                   <Textarea
                     id="env-vars"
                     value={envText}
                     onChange={(event) => setEnvText(event.target.value)}
                     placeholder={"API_URL=https://api.example.com\nNODE_ENV=production"}
+                    className="rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500] min-h-[100px]"
                   />
-                  <p className="text-xs text-slate-400">
-                    Vercel: only environment variable names are passed. Netlify: keys and values are passed in URL hash. Cloudflare: uses only repository URL via deploy button.
+                  <p className="text-xs text-gray-400 font-mono">
+                    Vercel: передаются только имена ключей. Netlify: ключи и значения в URL hash. Cloudflare: не передаются переменные окружения, только URL репозитория.
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <div className="mt-6 border border-[#333333] bg-black p-4 brutalist-shadow">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm text-slate-200">Auto recommendations</p>
+                    <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500]">Автоматические рекомендации</p>
                     <Button
                       type="button"
                       className="w-full sm:w-auto"
@@ -721,68 +690,71 @@ export function DeployDashboard() {
                       disabled={recommendationLoading || !selectedRepo}
                       onClick={handleAutoRecommendConfig}
                     >
-                      {recommendationLoading ? "Detecting..." : "Auto-detect from repository"}
+                      {recommendationLoading ? "Детектирование..." : "Распознать конфигурацию репозитория"}
                     </Button>
                   </div>
-                  <p className="mt-2 text-xs text-slate-400">
-                    Detected framework: <span className="text-slate-200">{repoRecommendationFramework}</span>
+                  <p className="mt-2 text-xs text-gray-400 font-mono">
+                    Распознанный фреймворк: <span className="text-white bg-[#333333] px-1">{repoRecommendationFramework}</span>
                   </p>
                   {repoRecommendationNotes.length > 0 ? (
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-300">
+                    <ul className="mt-2 list-none space-y-1 text-xs text-gray-300 font-mono">
                       {repoRecommendationNotes.map((note) => (
-                        <li key={note}>{note}</li>
+                        <li key={note} className="before:content-['>_'] before:mr-2 before:text-[#ff4500]">{note}</li>
                       ))}
                     </ul>
                   ) : null}
                 </div>
 
-                <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap">
-                  <Input
-                    placeholder="Template name (e.g. Next.js default)"
-                    value={presetName}
-                    onChange={(event) => setPresetName(event.target.value)}
-                    className="w-full sm:max-w-xs"
-                  />
-                  <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleSavePreset}>
-                    Save template
-                  </Button>
-                  <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleClearPreset}>
-                    Clear all templates
-                  </Button>
-                </div>
+                <div className="mt-6 border border-[#333333] p-4 brutalist-shadow">
+                  <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500] mb-4">Сохранение Шаблонов</p>
+                  <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap">
+                    <Input
+                      placeholder="Имя шаблона (напр. Next.js Default)"
+                      value={presetName}
+                      onChange={(event) => setPresetName(event.target.value)}
+                      className="w-full sm:max-w-xs rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
+                    />
+                    <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleSavePreset}>
+                      Сохранить шаблон
+                    </Button>
+                    <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleClearPreset}>
+                      Очистить все
+                    </Button>
+                  </div>
 
-                <div className="space-y-2">
-                  <p className="text-sm text-slate-300">Saved templates</p>
-                  {presetItems.length === 0 ? (
-                    <p className="text-xs text-slate-400">No templates saved yet.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {presetItems.map((item) => (
-                        <div key={item.id} className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/40 p-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <p className="text-sm text-slate-100">{item.name}</p>
-                            <p className="text-xs text-slate-400">Updated: {new Date(item.updatedAt).toLocaleString()}</p>
+                  <div className="space-y-4 mt-6">
+                    <p className="text-sm font-bold uppercase tracking-widest">Сохраненные шаблоны</p>
+                    {presetItems.length === 0 ? (
+                      <p className="text-xs text-gray-500 font-mono">Нет сохраненных шаблонов.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {presetItems.map((item) => (
+                          <div key={item.id} className="flex flex-col gap-2 border border-[#333333] bg-black p-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-bold">{item.name}</p>
+                              <p className="text-xs text-gray-500 font-mono">Обновлен: {new Date(item.updatedAt).toLocaleString()}</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => handleLoadPreset(item)}>
+                                Загрузить
+                              </Button>
+                              <Button type="button" variant="outline" className="w-full sm:w-auto border-red-900 border text-red-500 hover:bg-black hover:text-red-500 hover:border-red-500" onClick={() => handleDeletePreset(item.id)}>
+                                Удалить
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => handleLoadPreset(item)}>
-                              Load
-                            </Button>
-                            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => handleDeletePreset(item.id)}>
-                              Delete
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {presetNotice ? (
                   <p
-                    className={`rounded-xl border p-3 text-xs ${
+                    className={`mt-4 border p-3 text-xs font-mono font-bold uppercase ${
                       presetNotice.tone === "success"
-                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                        : "border-rose-500/40 bg-rose-500/10 text-rose-300"
+                        ? "border-green-500 bg-black text-green-500"
+                        : "border-red-500 bg-black text-red-500"
                     }`}
                   >
                     {presetNotice.message}
@@ -793,151 +765,155 @@ export function DeployDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="mt-6 border-teal-500/20">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <IconRocket className="size-4 text-teal-300" />
-              Deploy
+        <Card className="rounded-none border-[#333333] bg-black brutalist-shadow mt-6">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#333333] bg-[#111]">
+            <CardTitle className="flex items-center gap-2 uppercase font-black tracking-widest text-[#ff4500]">
+              <IconRocket className="size-4" />
+              Деплой Системы
             </CardTitle>
-            <StatusBadge tone={deployDisabled ? "warning" : "success"} label={deployDisabled ? "Select repo + branch" : "Launch providers"} />
+            <StatusBadge tone={deployDisabled ? "warning" : "success"} label={deployDisabled ? "Выберите ветку" : "Системы готовы"} />
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4 text-sm text-slate-300 sm:grid-cols-2">
+          <CardContent className="pt-6">
+            <div className="grid gap-3 border border-[#333333] bg-[#0a0a0a] p-4 text-sm text-gray-300 font-mono sm:grid-cols-2 brutalist-shadow">
               <p className="break-all">
-                <span className="text-slate-400">Repository URL:</span> {selectedRepo?.htmlUrl ?? "-"}
+                <span className="text-[#ff4500] font-bold">URL Репозитория:</span> {selectedRepo?.htmlUrl ?? "НЕ ВЫБРАНО"}
               </p>
               <p>
-                <span className="text-slate-400">Selected branch:</span> {selectedBranch || "-"}
+                <span className="text-[#ff4500] font-bold">Ветка (Branch):</span> {selectedBranch || "НЕ ВЫБРАНО"}
               </p>
             </div>
 
-            <div className="grid gap-3 sm:gap-4 md:grid-cols-3">
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
               <a
                 href={vercelUrl}
                 target="_blank"
                 rel="noreferrer"
                 onClick={() => handleRecordDeploy("vercel")}
-                className={`inline-flex h-14 items-center justify-center gap-2 rounded-xl text-base font-semibold transition-all duration-200 ${
+                className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
                   deployDisabled
-                    ? "pointer-events-none bg-slate-800 text-slate-500"
-                    : "bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/20 hover:-translate-y-0.5 hover:bg-cyan-300 hover:shadow-cyan-400/30"
+                    ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
+                    : "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#ff4500] active:shadow-[2px_2px_0px_0px_#ff4500]"
                 }`}
               >
                 <IconCloud className="size-5" />
-                Deploy to Vercel
+                Деплой в Vercel
               </a>
               <a
                 href={netlifyUrl}
                 target="_blank"
                 rel="noreferrer"
                 onClick={() => handleRecordDeploy("netlify")}
-                className={`inline-flex h-14 items-center justify-center gap-2 rounded-xl text-base font-semibold transition-all duration-200 ${
+                className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
                   deployDisabled
-                    ? "pointer-events-none bg-slate-800 text-slate-500"
-                    : "bg-teal-400 text-slate-950 shadow-lg shadow-teal-500/20 hover:-translate-y-0.5 hover:bg-teal-300 hover:shadow-teal-400/30"
+                    ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
+                    : "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#00ff00] active:shadow-[2px_2px_0px_0px_#00ff00]"
                 }`}
               >
                 <IconRocket className="size-5" />
-                Deploy to Netlify
+                Деплой в Netlify
               </a>
               <a
                 href={cloudflareUrl}
                 target="_blank"
                 rel="noreferrer"
                 onClick={() => handleRecordDeploy("cloudflare")}
-                className={`inline-flex h-14 items-center justify-center gap-2 rounded-xl text-base font-semibold transition-all duration-200 ${
+                className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
                   deployDisabled
-                    ? "pointer-events-none bg-slate-800 text-slate-500"
-                    : "bg-amber-300 text-slate-950 shadow-lg shadow-amber-500/20 hover:-translate-y-0.5 hover:bg-amber-200 hover:shadow-amber-300/30"
+                    ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
+                    : "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#ff00ff] active:shadow-[2px_2px_0px_0px_#ff00ff]"
                 }`}
               >
                 <IconBolt className="size-5" />
-                Deploy to Cloudflare
+                Деплой в Cloudflare
               </a>
             </div>
 
-            <div className="grid gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-100 md:grid-cols-3">
-              <p>Vercel: branch is not passed because Deploy Button has no stable documented branch parameter.</p>
-              <p>Netlify: branch is passed via query `branch`, root directory via `base`.</p>
-              <p>Cloudflare: opens Workers Deploy Button (`url` param). This flow supports Workers apps, not Pages apps.</p>
+            <div className="mt-8 grid gap-2 border border-[#333333] bg-black p-4 text-xs text-gray-400 md:grid-cols-3 brutalist-shadow">
+              <p>Vercel: ветка не передается, т.к. Deploy Button не имеет стабильного параметра для ветки.</p>
+              <p>Netlify: ветка передается через query-параметр `branch`, корневая директория через `base`.</p>
+              <p>Cloudflare: открывает Workers Deploy Button (параметр `url`). Поддерживаются приложения Workers, а не Pages.</p>
             </div>
 
-            <div className="mt-3 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-slate-400">Provider capability matrix</p>
-              <table className="min-w-full text-left text-xs text-slate-200">
+            <div className="mt-6 overflow-x-auto border border-[#333333] bg-black p-4 brutalist-shadow">
+              <p className="mb-4 text-xs font-bold uppercase tracking-widest text-[#ff4500]">Матрица возможностей провайдеров</p>
+              <table className="min-w-full text-left text-xs text-white font-mono">
                 <thead>
-                  <tr className="text-slate-400">
-                    <th className="pb-2 pr-4 font-medium">Provider</th>
-                    <th className="pb-2 pr-4 font-medium">Branch support</th>
-                    <th className="pb-2 pr-4 font-medium">Build/output overrides</th>
-                    <th className="pb-2 pr-4 font-medium">Env behavior</th>
+                  <tr className="text-gray-500 border-b border-[#333333]">
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Провайдер</th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Поддержка веток</th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Переопределение сборки/вывода</th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Поведение Env</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-t border-slate-800">
-                    <td className="py-2 pr-4">Vercel</td>
-                    <td className="py-2 pr-4">No (button flow)</td>
-                    <td className="py-2 pr-4">Yes</td>
-                    <td className="py-2 pr-4">Keys only</td>
+                  <tr className="border-b border-[#333333]/50">
+                    <td className="py-3 pr-4 font-bold">Vercel</td>
+                    <td className="py-3 pr-4 text-red-400">Нет (button flow)</td>
+                    <td className="py-3 pr-4 text-green-400">Да</td>
+                    <td className="py-3 pr-4">Только ключи</td>
                   </tr>
-                  <tr className="border-t border-slate-800">
-                    <td className="py-2 pr-4">Netlify</td>
-                    <td className="py-2 pr-4">Yes</td>
-                    <td className="py-2 pr-4">Partial (base only)</td>
-                    <td className="py-2 pr-4">Key/value in URL hash</td>
+                  <tr className="border-b border-[#333333]/50">
+                    <td className="py-3 pr-4 font-bold">Netlify</td>
+                    <td className="py-3 pr-4 text-green-400">Да</td>
+                    <td className="py-3 pr-4 text-yellow-400">Частично (только base)</td>
+                    <td className="py-3 pr-4">Ключ/значение в URL hash</td>
                   </tr>
-                  <tr className="border-t border-slate-800">
-                    <td className="py-2 pr-4">Cloudflare</td>
-                    <td className="py-2 pr-4">No (Workers button)</td>
-                    <td className="py-2 pr-4">No</td>
-                    <td className="py-2 pr-4">Repository URL only</td>
+                  <tr>
+                    <td className="py-3 pr-4 font-bold">Cloudflare</td>
+                    <td className="py-3 pr-4 text-red-400">Нет (Workers button)</td>
+                    <td className="py-3 pr-4 text-red-400">Нет</td>
+                    <td className="py-3 pr-4">Только URL репозитория</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <div className="pt-2">
+            <div className="mt-8">
               <Button variant="outline" className="w-full sm:w-auto" onClick={handleRefreshRepositories}>
-                Refresh repositories
+                Обновить репозитории
               </Button>
             </div>
 
-            <div className="mt-6 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm font-medium text-slate-100">Recent deploys</p>
-                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={handleClearHistory}>
-                  Clear history
+            <div className="mt-8 border border-[#333333] bg-[#0a0a0a] p-6 brutalist-shadow">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-[#333333] pb-4">
+                <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500]">История деплоев</p>
+                <Button type="button" variant="outline" className="w-full sm:w-auto border-red-900 border text-red-500 hover:bg-black hover:text-red-500 hover:border-red-500" onClick={handleClearHistory}>
+                  Очистить историю
                 </Button>
               </div>
 
               {historyItems.length === 0 ? (
-                <p className="mt-3 text-xs text-slate-400">No deploys recorded yet. Launch a provider to create your first reusable run.</p>
+                <p className="mt-6 text-xs text-gray-500 font-mono">История пуста. Запустите провайдера для создания первой записи.</p>
               ) : (
-                <div className="mt-3 space-y-2">
+                <div className="mt-6 space-y-4">
                   {historyItems.map((entry) => (
-                    <div key={entry.id} className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="space-y-1">
-                        <p className="text-sm text-slate-100">
-                          {entry.repoFullName} <span className="text-slate-400">via {entry.provider}</span>
+                    <div key={entry.id} className="flex flex-col gap-4 border border-[#333333] bg-black p-4 lg:flex-row lg:items-center lg:justify-between transition-colors hover:border-white">
+                      <div className="space-y-2">
+                        <p className="text-sm font-bold text-white uppercase tracking-widest">
+                          {entry.repoFullName} <span className="text-[#ff4500] ml-2">[{entry.provider}]</span>
                         </p>
-                        <p className="text-xs text-slate-400">
-                          Branch: {entry.branch || "-"} · Root: {entry.rootDirectory || "."} · Build: {entry.buildCommand || "-"}
+                        <p className="text-xs text-gray-400 font-mono flex gap-3">
+                          <span>Ветка: {entry.branch || "-"}</span>
+                          <span className="text-[#333]">|</span>
+                          <span>Root: {entry.rootDirectory || "."}</span>
+                          <span className="text-[#333]">|</span>
+                          <span>Build: {entry.buildCommand || "-"}</span>
                         </p>
-                        <p className="text-xs text-slate-500">
-                          {new Date(entry.createdAt).toLocaleString()} · Env keys: {entry.envKeys.length > 0 ? entry.envKeys.join(", ") : "none"}
+                        <p className="text-xs text-gray-600 font-mono">
+                          {new Date(entry.createdAt).toLocaleString()} · Ключи Env: {entry.envKeys.length > 0 ? entry.envKeys.join(", ") : "нет"}
                         </p>
                       </div>
-                      <div className="flex flex-col gap-2 sm:flex-row">
+                      <div className="flex flex-col gap-3 sm:flex-row">
                         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => handleApplyHistoryEntry(entry)}>
-                          Apply config
+                          Загрузить конфиг
                         </Button>
                         <a
                           href={entry.deployUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-700/80 bg-slate-900/70 px-4 text-sm text-slate-100 transition hover:border-cyan-400 hover:text-cyan-200"
+                          className="inline-flex h-10 items-center justify-center border border-[#333333] bg-transparent px-4 text-xs font-bold uppercase tracking-widest text-white transition hover:border-[#ff4500] hover:text-[#ff4500] active:translate-x-[2px] active:translate-y-[2px]"
                         >
-                          Re-run deploy
+                          Перезапустить
                         </a>
                       </div>
                     </div>

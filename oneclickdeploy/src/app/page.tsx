@@ -45,29 +45,29 @@ export default function HomePage() {
           {/* Left Block - Title */}
           <motion.div variants={itemVariants} className="flex-1 w-full max-w-2xl">
             <p className="mb-6 text-sm uppercase tracking-[0.4em] text-[#ff4500] border-l-2 border-[#ff4500] pl-4 font-bold">
-              Automated Operations [System Active]
+              Автоматизированные Операции [Система Активна]
             </p>
             <h1 className="text-5xl sm:text-7xl font-sans font-black uppercase leading-[0.9] tracking-tighter">
-              One-Click <br /> Deploy <br /> Protocol
+              Протокол <br /> Деплоя <br /> В Один Клик
             </h1>
             <div className="mt-8 flex flex-wrap gap-3">
               <StatusBadge tone="success" label="O O O" />
-              <StatusBadge tone="neutral" label="GitHub Auth" />
-              <StatusBadge tone="neutral" label="Provider Limits" />
-              <StatusBadge tone="warning" label="Raw UI" />
+              <StatusBadge tone="neutral" label="GitHub Авторизация" />
+              <StatusBadge tone="neutral" label="Лимиты Провайдеров" />
+              <StatusBadge tone="warning" label="Суровый UI/UX" />
             </div>
           </motion.div>
 
           {/* Right Block - Content & Actions */}
           <motion.div variants={itemVariants} className="flex-[0.8] w-full flex flex-col gap-8 bg-black/60 backdrop-blur-md border border-[#333333] p-8 brutalist-shadow">
             <p className="text-sm sm:text-base text-gray-400 leading-relaxed max-w-xl">
-              Select a repository and branch. The system auto-detects configuration limits and provides direct injection paths to Vercel, Netlify, and Cloudflare.
+              Выберите репозиторий и ветку. Система автоматически определит конфигурацию и предоставит прямые пути развертывания в Vercel, Netlify и Cloudflare.
             </p>
             
             <div className="flex flex-col gap-4">
               {!session ? (
                 <Button className="w-full justify-between" onClick={() => signIn("github", { callbackUrl: "/dashboard" })}>
-                  <span className="flex items-center gap-2"><IconGithub className="size-5" /> Authenticate</span>
+                  <span className="flex items-center gap-2"><IconGithub className="size-5" /> Авторизоваться</span>
                   <span className="text-[#ff4500]">→</span>
                 </Button>
               ) : (
@@ -75,15 +75,15 @@ export default function HomePage() {
                   href="/dashboard"
                   className="inline-flex h-14 w-full justify-between items-center bg-[#ff4500] px-6 text-sm font-bold text-black border border-[#ff4500] shadow-[4px_4px_0px_0px_#ffffff] transition-all hover:bg-black hover:text-[#ff4500] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_#ffffff] uppercase tracking-widest"
                 >
-                  <span className="flex items-center gap-2"><IconRocket className="size-5" /> Access Dashboard</span>
-                  <span className="font-mono">EXECUTE</span>
+                  <span className="flex items-center gap-2"><IconRocket className="size-5" /> Открыть Дашборд</span>
+                  <span className="font-mono">ВЫПОЛНИТЬ</span>
                 </Link>
               )}
               <Link
                 href="/login"
                 className="inline-flex h-14 w-full justify-between items-center border border-[#333333] bg-transparent px-6 text-sm font-bold text-white shadow-[4px_4px_0px_0px_#ff4500] transition-all hover:border-[#ff4500] hover:text-[#ff4500] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_#ff4500] uppercase tracking-widest"
               >
-                <span>Manual Login</span>
+                <span>Ручной Вход</span>
                 <span className="font-mono">{">_"}</span>
               </Link>
             </div>
@@ -93,10 +93,10 @@ export default function HomePage() {
         {/* Footer Info */}
         <motion.div variants={itemVariants} initial="hidden" animate="show" className="mt-16 border-t border-[#333333] pt-6 max-w-7xl mx-auto w-full flex justify-between text-xs text-gray-600 font-mono items-center">
           <p className="max-w-2xl">
-            SECURITY NOTICE: Requires GitHub OAuth scope [repo]. Access utilized exclusively server-side. Token securely isolated.
+            ОБРАТИТЕ ВНИМАНИЕ: Требуется GitHub OAuth scope [repo]. Доступ используется исключительно на стороне сервера. Токен надежно изолирован.
           </p>
           <div className="hidden sm:block text-[#ff4500] animate-pulse">
-            STATUS: ONLINE
+            СТАТУС: ОНЛАЙН
           </div>
         </motion.div>
       </div>
