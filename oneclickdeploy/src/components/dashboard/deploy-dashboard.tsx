@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createNetlifyDeployUrl, createVercelDeployUrl } from "@/lib/deploy-links";
+import { clearDeployPreset, loadDeployPreset, saveDeployPreset } from "@/lib/deploy-preset";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Accordion, AccordionContent, AccordionTrigger } from "@/components/ui/accordion";
+import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
+import { IconBranch, IconCloud, IconGithub, IconLogout, IconRepo, IconRocket, IconSearch, IconSettings } from "@/components/ui/icons";
 
 type RepoItem = {
   id: number;
@@ -30,11 +33,33 @@ type ApiError = {
   resetAt?: number | null;
 };
 
+type ReposApiResponse = {
+  repos?: RepoItem[];
+  hasNextPage?: boolean;
+};
+
+type BranchesApiResponse = {
+  branches?: BranchItem[];
+  hasNextPage?: boolean;
+};
+
+type PresetNotice = {
+  tone: "success" | "error";
+  message: string;
+};
+
+const REPO_PAGE_SIZE = 30;
+const BRANCH_PAGE_SIZE = 100;
+
 function formatRateLimitError(error: ApiError): string {
   if (error.resetAt) {
     return `${error.error ?? "GitHub API rate limit exceeded"}. Retry after ${new Date(error.resetAt).toLocaleTimeString()}.`;
   }
   return error.error ?? "Request failed";
+}
+
+function buildStateBadge(tone: StatusTone, label: string) {
+  return { tone, label } as const;
 }
 
 export function DeployDashboard() {
@@ -53,33 +78,61 @@ export function DeployDashboard() {
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [reposError, setReposError] = useState<string | null>(null);
   const [branchesError, setBranchesError] = useState<string | null>(null);
+  const [presetNotice, setPresetNotice] = useState<PresetNotice | null>(null);
+  const [repoPage, setRepoPage] = useState(1);
+  const [reposHasNextPage, setReposHasNextPage] = useState(false);
+  const [branchesPage, setBranchesPage] = useState(1);
+  const [branchesHasNextPage, setBranchesHasNextPage] = useState(false);
+  const [reposRefreshNonce, setReposRefreshNonce] = useState(0);
 
   useEffect(() => {
     async function loadRepos() {
       setReposLoading(true);
       setReposError(null);
 
-      const res = await fetch("/api/github/repos", { cache: "no-store" });
-      const json = (await res.json()) as { repos?: RepoItem[] } & ApiError;
+      const params = new URLSearchParams({ page: String(repoPage), perPage: String(REPO_PAGE_SIZE) });
+      const res = await fetch(`/api/github/repos?${params.toString()}`);
+      const json = (await res.json()) as ReposApiResponse & ApiError;
 
       if (!res.ok) {
         setReposError(formatRateLimitError(json));
-        setRepos([]);
+        if (repoPage === 1) {
+          setRepos([]);
+        }
+        setReposHasNextPage(false);
         setReposLoading(false);
         return;
       }
 
       const nextRepos = json.repos ?? [];
-      setRepos(nextRepos);
+      setReposHasNextPage(Boolean(json.hasNextPage));
+      setRepos((current) => {
+        if (repoPage === 1) {
+          return nextRepos;
+        }
 
-      if (nextRepos.length > 0) {
+        const seen = new Set(current.map((repo) => repo.id));
+        const merged = [...current];
+        for (const repo of nextRepos) {
+          if (seen.has(repo.id)) continue;
+          merged.push(repo);
+        }
+        return merged;
+      });
+
+      if (repoPage === 1 && nextRepos.length > 0) {
         const firstRepo = nextRepos[0];
+        setBranches([]);
+        setBranchesPage(1);
+        setBranchesHasNextPage(false);
         setSelectedRepoId(String(firstRepo.id));
         setSelectedBranch(firstRepo.defaultBranch);
-      } else {
+      } else if (repoPage === 1) {
         setSelectedRepoId("");
         setSelectedBranch("");
         setBranches([]);
+        setBranchesPage(1);
+        setBranchesHasNextPage(false);
       }
 
       setReposLoading(false);
@@ -89,7 +142,7 @@ export function DeployDashboard() {
       setReposError("Failed to fetch repositories");
       setReposLoading(false);
     });
-  }, []);
+  }, [repoPage, reposRefreshNonce]);
 
   const filteredRepos = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -100,6 +153,11 @@ export function DeployDashboard() {
   const selectedRepo = useMemo(
     () => repos.find((repo) => String(repo.id) === selectedRepoId) ?? null,
     [repos, selectedRepoId],
+  );
+
+  const selectedBranchItem = useMemo(
+    () => branches.find((branch) => branch.name === selectedBranch) ?? null,
+    [branches, selectedBranch],
   );
 
   useEffect(() => {
@@ -113,26 +171,49 @@ export function DeployDashboard() {
       setBranchesLoading(true);
       setBranchesError(null);
 
-      const params = new URLSearchParams({ owner: repo.owner, repo: repo.name });
-      const res = await fetch(`/api/github/branches?${params.toString()}`, { cache: "no-store" });
-      const json = (await res.json()) as { branches?: BranchItem[] } & ApiError;
+      const params = new URLSearchParams({
+        owner: repo.owner,
+        repo: repo.name,
+        page: String(branchesPage),
+        perPage: String(BRANCH_PAGE_SIZE),
+      });
+      const res = await fetch(`/api/github/branches?${params.toString()}`);
+      const json = (await res.json()) as BranchesApiResponse & ApiError;
 
       if (!res.ok) {
         setBranchesError(formatRateLimitError(json));
-        setBranches([]);
+        if (branchesPage === 1) {
+          setBranches([]);
+        }
+        setBranchesHasNextPage(false);
         setBranchesLoading(false);
         return;
       }
 
       const nextBranches = json.branches ?? [];
-      setBranches(nextBranches);
+      setBranchesHasNextPage(Boolean(json.hasNextPage));
+      setBranches((current) => {
+        if (branchesPage === 1) {
+          return nextBranches;
+        }
 
-      const names = new Set(nextBranches.map((branch) => branch.name));
-      setSelectedBranch((current) => {
-        if (current && names.has(current)) return current;
-        if (names.has(repo.defaultBranch)) return repo.defaultBranch;
-        return nextBranches[0]?.name ?? "";
+        const seen = new Set(current.map((branch) => branch.name));
+        const merged = [...current];
+        for (const branch of nextBranches) {
+          if (seen.has(branch.name)) continue;
+          merged.push(branch);
+        }
+        return merged;
       });
+
+      if (branchesPage === 1) {
+        const names = new Set(nextBranches.map((branch) => branch.name));
+        setSelectedBranch((current) => {
+          if (current && names.has(current)) return current;
+          if (names.has(repo.defaultBranch)) return repo.defaultBranch;
+          return nextBranches[0]?.name ?? "";
+        });
+      }
 
       setBranchesLoading(false);
     }
@@ -141,7 +222,7 @@ export function DeployDashboard() {
       setBranchesError("Failed to fetch branches");
       setBranchesLoading(false);
     });
-  }, [selectedRepo]);
+  }, [selectedRepo, branchesPage]);
 
   const deployConfig = {
     rootDirectory,
@@ -149,6 +230,57 @@ export function DeployDashboard() {
     outputDirectory,
     envText,
   };
+
+  function handleSavePreset() {
+    const result = saveDeployPreset(deployConfig);
+    if (!result.ok) {
+      setPresetNotice({ tone: "error", message: result.error });
+      return;
+    }
+
+    setPresetNotice({ tone: "success", message: "Preset saved locally." });
+  }
+
+  function handleLoadPreset() {
+    const result = loadDeployPreset();
+    if (!result.ok) {
+      setPresetNotice({ tone: "error", message: result.error });
+      return;
+    }
+
+    if (!result.preset) {
+      setPresetNotice({ tone: "error", message: "No saved preset found." });
+      return;
+    }
+
+    setRootDirectory(result.preset.rootDirectory);
+    setBuildCommand(result.preset.buildCommand);
+    setOutputDirectory(result.preset.outputDirectory);
+    setEnvText(result.preset.envText);
+    setPresetNotice({ tone: "success", message: "Preset loaded." });
+  }
+
+  function handleClearPreset() {
+    const result = clearDeployPreset();
+    if (!result.ok) {
+      setPresetNotice({ tone: "error", message: result.error });
+      return;
+    }
+
+    setPresetNotice({ tone: "success", message: "Saved preset removed." });
+  }
+
+  function handleRefreshRepositories() {
+    setRepoPage(1);
+    setRepos([]);
+    setSelectedRepoId("");
+    setSelectedBranch("");
+    setBranches([]);
+    setBranchesPage(1);
+    setReposHasNextPage(false);
+    setBranchesHasNextPage(false);
+    setReposRefreshNonce((current) => current + 1);
+  }
 
   const vercelUrl = selectedRepo
     ? createVercelDeployUrl(
@@ -176,51 +308,108 @@ export function DeployDashboard() {
 
   const deployDisabled = !selectedRepo || !selectedBranch;
 
+  const repoStateBadge =
+    reposLoading
+      ? buildStateBadge("loading", "Repositories: loading")
+      : reposError
+        ? buildStateBadge("error", "Repositories: failed")
+        : repos.length === 0
+          ? buildStateBadge("warning", "Repositories: empty")
+          : buildStateBadge("success", `Repositories: ${repos.length}`);
+
+  const branchStateBadge =
+    !selectedRepo
+      ? buildStateBadge("neutral", "Branch: not selected")
+      : branchesLoading
+        ? buildStateBadge("loading", "Branch: loading")
+        : branchesError
+          ? buildStateBadge("error", "Branch: failed")
+          : branches.length === 0
+            ? buildStateBadge("warning", "Branch: empty")
+            : buildStateBadge("success", `Branches: ${branches.length}`);
+
+  const selectedBranchBadge =
+    !selectedBranchItem
+      ? buildStateBadge("neutral", "No branch selected")
+      : selectedBranchItem.protected
+        ? buildStateBadge("warning", "Protected branch")
+        : buildStateBadge("success", "Ready to deploy");
+
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <section className="mx-auto max-w-5xl px-6 py-10">
-        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="floating-orb floating-orb--cyan -left-24 top-8 size-72 opacity-70" />
+        <div className="floating-orb floating-orb--teal -right-20 top-12 size-60 opacity-65" />
+        <div className="floating-orb floating-orb--cyan bottom-12 right-1/3 size-52 opacity-45" />
+      </div>
+      <section className="relative mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:py-12">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Deploy Buttons</p>
-            <h1 className="mt-2 text-3xl font-semibold">GitHub -&gt; Vercel / Netlify</h1>
-            <p className="mt-2 text-sm text-slate-300">
-              Choose a repository and branch, then open provider setup with prefilled parameters.
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">GitHub -&gt; Vercel / Netlify</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-300 sm:text-base">
+              Choose repository and branch, monitor status chips, and open provider setup with prefilled parameters.
             </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <StatusBadge {...repoStateBadge} />
+              <StatusBadge {...branchStateBadge} />
+              <StatusBadge {...selectedBranchBadge} className={selectedBranchItem?.protected ? "status-pulse" : ""} />
+            </div>
           </div>
-          <Link href="/logout" className="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:border-slate-500">
+          <Link
+            href="/logout"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-600/80 bg-slate-900/60 px-4 text-sm transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-800/80"
+          >
+            <IconLogout className="size-4" />
             Logout
           </Link>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Repository selection</CardTitle>
+        <Card className="border-cyan-500/20">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <IconRepo className="size-4 text-cyan-300" />
+              Repository selection
+            </CardTitle>
+            <StatusBadge tone={deployDisabled ? "warning" : "success"} label={deployDisabled ? "Deployment blocked" : "Deployment ready"} />
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               <label htmlFor="repo-search" className="text-sm text-slate-300">
                 Search repository
               </label>
-              <Input
-                id="repo-search"
-                placeholder="owner/repo"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
+              <div className="relative">
+                <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="repo-search"
+                  className="pl-9"
+                  placeholder="owner/repo"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
-                <label htmlFor="repo-select" className="text-sm text-slate-300">
+                <label htmlFor="repo-select" className="inline-flex items-center gap-2 text-sm text-slate-300">
+                  <IconGithub className="size-4 text-cyan-300" />
                   Repository
                 </label>
                 <select
                   id="repo-select"
                   value={selectedRepoId}
-                  onChange={(event) => setSelectedRepoId(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-slate-700 bg-slate-900/70 px-3 text-sm text-slate-100 outline-none focus:border-cyan-400"
+                  onChange={(event) => {
+                    setBranches([]);
+                    setBranchesPage(1);
+                    setBranchesHasNextPage(false);
+                    setSelectedBranch("");
+                    setSelectedRepoId(event.target.value);
+                  }}
+                  className="h-11 w-full rounded-xl border border-slate-700/80 bg-slate-900/70 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.15)]"
                   disabled={reposLoading || filteredRepos.length === 0}
                 >
+                  {filteredRepos.length === 0 ? <option value="">No repositories</option> : null}
                   {filteredRepos.map((repo) => (
                     <option key={repo.id} value={String(repo.id)}>
                       {repo.fullName}
@@ -230,16 +419,18 @@ export function DeployDashboard() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="branch-select" className="text-sm text-slate-300">
+                <label htmlFor="branch-select" className="inline-flex items-center gap-2 text-sm text-slate-300">
+                  <IconBranch className="size-4 text-teal-300" />
                   Branch
                 </label>
                 <select
                   id="branch-select"
                   value={selectedBranch}
                   onChange={(event) => setSelectedBranch(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-slate-700 bg-slate-900/70 px-3 text-sm text-slate-100 outline-none focus:border-cyan-400"
+                  className="h-11 w-full rounded-xl border border-slate-700/80 bg-slate-900/70 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.15)]"
                   disabled={branchesLoading || branches.length === 0}
                 >
+                  {branches.length === 0 ? <option value="">No branches</option> : null}
                   {branches.map((branch) => (
                     <option key={branch.name} value={branch.name}>
                       {branch.name}
@@ -260,10 +451,29 @@ export function DeployDashboard() {
               <p className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-300">{branchesError}</p>
             ) : null}
 
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              {reposHasNextPage ? (
+                <Button type="button" className="w-full sm:w-auto" variant="outline" disabled={reposLoading} onClick={() => setRepoPage((current) => current + 1)}>
+                  {reposLoading ? "Loading repositories..." : "Load more repositories"}
+                </Button>
+              ) : null}
+              {selectedRepo && branchesHasNextPage ? (
+                <Button
+                  type="button"
+                  className="w-full sm:w-auto"
+                  variant="outline"
+                  disabled={branchesLoading}
+                  onClick={() => setBranchesPage((current) => current + 1)}
+                >
+                  {branchesLoading ? "Loading branches..." : "Load more branches"}
+                </Button>
+              ) : null}
+            </div>
+
             <Accordion>
-              <AccordionTrigger>Advanced settings (optional)</AccordionTrigger>
+              <AccordionTrigger className="inline-flex items-center gap-2"><IconSettings className="size-4 text-slate-300" />Advanced settings (optional)</AccordionTrigger>
               <AccordionContent>
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 lg:grid-cols-3">
                   <div className="space-y-2">
                     <label htmlFor="root-directory" className="text-sm text-slate-300">
                       Root directory
@@ -315,44 +525,78 @@ export function DeployDashboard() {
                     Vercel: only environment variable names are passed. Netlify: keys and values are passed in URL hash.
                   </p>
                 </div>
+
+                <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap">
+                  <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleSavePreset}>
+                    Save preset
+                  </Button>
+                  <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleLoadPreset}>
+                    Load preset
+                  </Button>
+                  <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleClearPreset}>
+                    Clear preset
+                  </Button>
+                </div>
+
+                {presetNotice ? (
+                  <p
+                    className={`rounded-xl border p-3 text-xs ${
+                      presetNotice.tone === "success"
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                        : "border-rose-500/40 bg-rose-500/10 text-rose-300"
+                    }`}
+                  >
+                    {presetNotice.message}
+                  </p>
+                ) : null}
               </AccordionContent>
             </Accordion>
           </CardContent>
         </Card>
 
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Deploy</CardTitle>
+        <Card className="mt-6 border-teal-500/20">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <IconRocket className="size-4 text-teal-300" />
+              Deploy
+            </CardTitle>
+            <StatusBadge tone={deployDisabled ? "warning" : "success"} label={deployDisabled ? "Select repo + branch" : "Launch providers"} />
           </CardHeader>
           <CardContent>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 text-sm text-slate-300">
-              <p>
+            <div className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4 text-sm text-slate-300 sm:grid-cols-2">
+              <p className="break-all">
                 <span className="text-slate-400">Repository URL:</span> {selectedRepo?.htmlUrl ?? "-"}
               </p>
-              <p className="mt-2">
+              <p>
                 <span className="text-slate-400">Selected branch:</span> {selectedBranch || "-"}
               </p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
               <a
                 href={vercelUrl}
                 target="_blank"
                 rel="noreferrer"
-                className={`inline-flex h-14 items-center justify-center rounded-xl text-base font-semibold transition ${
-                  deployDisabled ? "pointer-events-none bg-slate-800 text-slate-500" : "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                className={`inline-flex h-14 items-center justify-center gap-2 rounded-xl text-base font-semibold transition-all duration-200 ${
+                  deployDisabled
+                    ? "pointer-events-none bg-slate-800 text-slate-500"
+                    : "bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/20 hover:-translate-y-0.5 hover:bg-cyan-300 hover:shadow-cyan-400/30"
                 }`}
               >
+                <IconCloud className="size-5" />
                 Deploy to Vercel
               </a>
               <a
                 href={netlifyUrl}
                 target="_blank"
                 rel="noreferrer"
-                className={`inline-flex h-14 items-center justify-center rounded-xl text-base font-semibold transition ${
-                  deployDisabled ? "pointer-events-none bg-slate-800 text-slate-500" : "bg-teal-400 text-slate-950 hover:bg-teal-300"
+                className={`inline-flex h-14 items-center justify-center gap-2 rounded-xl text-base font-semibold transition-all duration-200 ${
+                  deployDisabled
+                    ? "pointer-events-none bg-slate-800 text-slate-500"
+                    : "bg-teal-400 text-slate-950 shadow-lg shadow-teal-500/20 hover:-translate-y-0.5 hover:bg-teal-300 hover:shadow-teal-400/30"
                 }`}
               >
+                <IconRocket className="size-5" />
                 Deploy to Netlify
               </a>
             </div>
@@ -363,7 +607,7 @@ export function DeployDashboard() {
             </div>
 
             <div className="pt-2">
-              <Button variant="outline" onClick={() => window.location.reload()}>
+              <Button variant="outline" className="w-full sm:w-auto" onClick={handleRefreshRepositories}>
                 Refresh repositories
               </Button>
             </div>
