@@ -478,6 +478,7 @@ export function DeployDashboard() {
         },
         deployConfig,
       )
+    : "#";
   const cloudflareUrl = selectedRepo
     ? createCloudflareDeployUrl(
         {
