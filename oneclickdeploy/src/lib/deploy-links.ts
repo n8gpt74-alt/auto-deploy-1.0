@@ -97,3 +97,26 @@ export function createCloudflareDeployUrl(repo: RepoSelection): string {
   const params = new URLSearchParams({ url: repo.htmlUrl });
   return `https://deploy.workers.cloudflare.com/?${params.toString()}`;
 }
+
+export function createRailwayDeployUrl(repo: RepoSelection, config: BuildConfigInput): string {
+  // Railway Deploy Button: https://railway.com/template/<template>?referralCode=...
+  // For arbitrary repos: https://railway.com/new/github/<owner>/<repo>
+  const envVars = parseEnvText(config.envText);
+  const params = new URLSearchParams({ repo: repo.htmlUrl });
+
+  const rootDirectory = clean(config.rootDirectory);
+  if (rootDirectory) params.set("rootDir", rootDirectory);
+
+  for (const envVar of envVars) {
+    params.set(`envs[${envVar.key}]`, envVar.value);
+  }
+
+  return `https://railway.com/new/github/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}?${params.toString()}`;
+}
+
+export function createRenderDeployUrl(repo: RepoSelection): string {
+  // Render Deploy Button — relies on render.yaml in the repo.
+  // Direct link: https://render.com/deploy?repo=<GIT_REPO_URL>
+  const params = new URLSearchParams({ repo: repo.htmlUrl });
+  return `https://render.com/deploy?${params.toString()}`;
+}

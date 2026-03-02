@@ -184,11 +184,13 @@ export async function GET(req: NextRequest) {
   const timeoutId = setTimeout(() => controller.abort(), GITHUB_TIMEOUT_MS);
 
   try {
-    const [packageJson, vercelJson, netlifyToml, wranglerToml] = await Promise.all([
+    const [packageJson, vercelJson, netlifyToml, wranglerToml, envExample, renderYaml] = await Promise.all([
       fetchRepoFile(owner, repo, "package.json", accessToken, controller.signal),
       fetchRepoFile(owner, repo, "vercel.json", accessToken, controller.signal),
       fetchRepoFile(owner, repo, "netlify.toml", accessToken, controller.signal),
       fetchRepoFile(owner, repo, "wrangler.toml", accessToken, controller.signal),
+      fetchRepoFile(owner, repo, ".env.example", accessToken, controller.signal),
+      fetchRepoFile(owner, repo, "render.yaml", accessToken, controller.signal),
     ]);
 
     const suggestion = packageJson ? detectFromPackageJson(packageJson) : createDefaultSuggestion();
@@ -205,6 +207,28 @@ export async function GET(req: NextRequest) {
       suggestion.notes.push("wrangler.toml detected — Cloudflare Worker/Pages setup may require provider-specific review.");
     }
 
+    if (renderYaml) {
+      suggestion.notes.push("render.yaml detected — Render deployment blueprint found.");
+    }
+
+    // Parse .env.example to extract expected environment variable keys
+    const envKeys: string[] = [];
+    if (envExample) {
+      const lines = envExample.split(/\r?\n/);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIndex = trimmed.indexOf("=");
+        if (eqIndex > 0) {
+          const key = trimmed.slice(0, eqIndex).trim();
+          if (key && /^[A-Z_][A-Z0-9_]*$/i.test(key)) {
+            envKeys.push(key);
+          }
+        }
+      }
+      suggestion.notes.push(`.env.example detected — ${envKeys.length} variable(s) discovered.`);
+    }
+
     return NextResponse.json(
       {
         framework: suggestion.framework,
@@ -214,11 +238,14 @@ export async function GET(req: NextRequest) {
           outputDirectory: suggestion.outputDirectory,
         },
         notes: suggestion.notes,
+        envKeys,
         detectedFiles: {
           packageJson: Boolean(packageJson),
           vercelJson: Boolean(vercelJson),
           netlifyToml: Boolean(netlifyToml),
           wranglerToml: Boolean(wranglerToml),
+          envExample: Boolean(envExample),
+          renderYaml: Boolean(renderYaml),
         },
       },
       {

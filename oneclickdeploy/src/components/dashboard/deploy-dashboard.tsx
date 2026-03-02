@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { createCloudflareDeployUrl, createNetlifyDeployUrl, createVercelDeployUrl } from "@/lib/deploy-links";
+import { createCloudflareDeployUrl, createNetlifyDeployUrl, createRailwayDeployUrl, createRenderDeployUrl, createVercelDeployUrl } from "@/lib/deploy-links";
 import {
   clearDeployPreset,
   deleteDeployPresetItem,
@@ -71,6 +71,7 @@ type RepoConfigResponse = {
     outputDirectory?: string;
   };
   notes?: string[];
+  envKeys?: string[];
 };
 
 const REPO_PAGE_SIZE = 30;
@@ -381,18 +382,27 @@ export function DeployDashboard() {
       }
 
       const recommendation = json.recommendation;
+      const discoveredEnvKeys = json.envKeys ?? [];
+      const currentEnvText = envText.trim();
+
+      // Auto-fill env from .env.example if user hasn't typed anything yet
+      let finalEnvText = envText;
+      if (!currentEnvText && discoveredEnvKeys.length > 0) {
+        finalEnvText = discoveredEnvKeys.map((key) => `${key}=`).join("\n");
+      }
+
       if (recommendation) {
         applyDeployFields({
           rootDirectory: recommendation.rootDirectory ?? "",
           buildCommand: recommendation.buildCommand ?? "",
           outputDirectory: recommendation.outputDirectory ?? "",
-          envText,
+          envText: finalEnvText,
         });
       }
 
       setRepoRecommendationFramework(json.framework ?? "unknown");
       setRepoRecommendationNotes(json.notes ?? []);
-      setPresetNotice({ tone: "success", message: "Auto-recommendation applied." });
+      setPresetNotice({ tone: "success", message: `Авто-рекомендация применена.${discoveredEnvKeys.length > 0 ? ` Обнаружено ${discoveredEnvKeys.length} переменных из .env.example.` : ""}` });
     } catch {
       setPresetNotice({ tone: "error", message: "Failed to auto-detect repository configuration." });
     } finally {
@@ -403,6 +413,8 @@ export function DeployDashboard() {
   function getDeployUrlByProvider(provider: DeployProvider): string {
     if (provider === "vercel") return vercelUrl;
     if (provider === "netlify") return netlifyUrl;
+    if (provider === "railway") return railwayUrl;
+    if (provider === "render") return renderUrl;
     return cloudflareUrl;
   }
 
@@ -490,6 +502,26 @@ export function DeployDashboard() {
       )
     : "#";
 
+  const railwayUrl = selectedRepo
+    ? createRailwayDeployUrl(
+        {
+          owner: selectedRepo.owner,
+          name: selectedRepo.name,
+          htmlUrl: selectedRepo.htmlUrl,
+          branch: selectedBranch,
+        },
+        deployConfig,
+      )
+    : "#";
+
+  const renderUrl = selectedRepo
+    ? createRenderDeployUrl({
+        owner: selectedRepo.owner,
+        name: selectedRepo.name,
+        htmlUrl: selectedRepo.htmlUrl,
+        branch: selectedBranch,
+      })
+    : "#";
   const deployDisabled = !selectedRepo || !selectedBranch;
 
   const repoStateBadge =
@@ -813,7 +845,7 @@ export function DeployDashboard() {
               </p>
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="mt-6 grid gap-4 md:grid-cols-3 lg:grid-cols-5">
               <a
                 href={vercelUrl}
                 target="_blank"
@@ -826,7 +858,7 @@ export function DeployDashboard() {
                 }`}
               >
                 <IconCloud className="size-5" />
-                Деплой в Vercel
+                Vercel
               </a>
               <a
                 href={netlifyUrl}
@@ -840,7 +872,7 @@ export function DeployDashboard() {
                 }`}
               >
                 <IconRocket className="size-5" />
-                Деплой в Netlify
+                Netlify
               </a>
               <a
                 href={cloudflareUrl}
@@ -854,14 +886,42 @@ export function DeployDashboard() {
                 }`}
               >
                 <IconBolt className="size-5" />
-                Деплой в Cloudflare
+                Cloudflare
+              </a>
+              <a
+                href={railwayUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => handleRecordDeploy("railway")}
+                className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
+                  deployDisabled
+                    ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
+                    : "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#00ccff] active:shadow-[2px_2px_0px_0px_#00ccff]"
+                }`}
+              >
+                <IconRocket className="size-5" />
+                Railway
+              </a>
+              <a
+                href={renderUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => handleRecordDeploy("render")}
+                className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
+                  deployDisabled
+                    ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
+                    : "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#ffcc00] active:shadow-[2px_2px_0px_0px_#ffcc00]"
+                }`}
+              >
+                <IconBolt className="size-5" />
+                Render
               </a>
             </div>
 
             <div className="mt-8 grid gap-2 border border-[#333333] bg-black p-4 text-xs text-gray-400 md:grid-cols-3 brutalist-shadow">
-              <p>Vercel: ветка не передается, т.к. Deploy Button не имеет стабильного параметра для ветки.</p>
-              <p>Netlify: ветка передается через query-параметр `branch`, корневая директория через `base`.</p>
-              <p>Cloudflare: открывает Workers Deploy Button (параметр `url`). Поддерживаются приложения Workers, а не Pages.</p>
+              <p>Vercel: ветка не передается, Deploy Button не поддерживает параметр ветки.</p>
+              <p>Netlify: ветка через `branch`, root через `base`. Railway: env передается в URL.</p>
+              <p>Cloudflare: Workers Deploy Button (URL). Render: требуется render.yaml в репо.</p>
             </div>
 
             <div className="mt-6 overflow-x-auto border border-[#333333] bg-black p-4 brutalist-shadow">
@@ -871,28 +931,40 @@ export function DeployDashboard() {
                   <tr className="text-gray-500 border-b border-[#333333]">
                     <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Провайдер</th>
                     <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Поддержка веток</th>
-                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Переопределение сборки/вывода</th>
-                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Поведение Env</th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Переопределение сборки</th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Env</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr className="border-b border-[#333333]/50">
                     <td className="py-3 pr-4 font-bold">Vercel</td>
-                    <td className="py-3 pr-4 text-red-400">Нет (button flow)</td>
+                    <td className="py-3 pr-4 text-red-400">Нет</td>
                     <td className="py-3 pr-4 text-green-400">Да</td>
                     <td className="py-3 pr-4">Только ключи</td>
                   </tr>
                   <tr className="border-b border-[#333333]/50">
                     <td className="py-3 pr-4 font-bold">Netlify</td>
                     <td className="py-3 pr-4 text-green-400">Да</td>
-                    <td className="py-3 pr-4 text-yellow-400">Частично (только base)</td>
-                    <td className="py-3 pr-4">Ключ/значение в URL hash</td>
+                    <td className="py-3 pr-4 text-yellow-400">Частично</td>
+                    <td className="py-3 pr-4">URL hash</td>
+                  </tr>
+                  <tr className="border-b border-[#333333]/50">
+                    <td className="py-3 pr-4 font-bold">Cloudflare</td>
+                    <td className="py-3 pr-4 text-red-400">Нет</td>
+                    <td className="py-3 pr-4 text-red-400">Нет</td>
+                    <td className="py-3 pr-4">Только URL</td>
+                  </tr>
+                  <tr className="border-b border-[#333333]/50">
+                    <td className="py-3 pr-4 font-bold text-[#00ccff]">Railway</td>
+                    <td className="py-3 pr-4 text-red-400">Нет</td>
+                    <td className="py-3 pr-4 text-yellow-400">Root dir</td>
+                    <td className="py-3 pr-4 text-green-400">Ключ/Значение</td>
                   </tr>
                   <tr>
-                    <td className="py-3 pr-4 font-bold">Cloudflare</td>
-                    <td className="py-3 pr-4 text-red-400">Нет (Workers button)</td>
+                    <td className="py-3 pr-4 font-bold text-[#ffcc00]">Render</td>
                     <td className="py-3 pr-4 text-red-400">Нет</td>
-                    <td className="py-3 pr-4">Только URL репозитория</td>
+                    <td className="py-3 pr-4 text-red-400">render.yaml</td>
+                    <td className="py-3 pr-4">render.yaml</td>
                   </tr>
                 </tbody>
               </table>

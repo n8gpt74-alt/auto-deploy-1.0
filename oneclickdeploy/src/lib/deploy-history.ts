@@ -1,6 +1,6 @@
 import { parseEnvText, type BuildConfigInput } from "@/lib/deploy-links";
 
-export type DeployProvider = "vercel" | "netlify" | "cloudflare";
+export type DeployProvider = "vercel" | "netlify" | "cloudflare" | "railway" | "render";
 
 export type DeployHistoryEntry = {
   id: string;
@@ -58,7 +58,7 @@ function isHistoryV1(value: unknown): value is DeployHistoryV1 {
     return (
       typeof entry.id === "string" &&
       typeof entry.createdAt === "string" &&
-      (entry.provider === "vercel" || entry.provider === "netlify" || entry.provider === "cloudflare") &&
+      (entry.provider === "vercel" || entry.provider === "netlify" || entry.provider === "cloudflare" || entry.provider === "railway" || entry.provider === "render") &&
       typeof entry.repoFullName === "string" &&
       typeof entry.repoUrl === "string" &&
       typeof entry.branch === "string" &&
