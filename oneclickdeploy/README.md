@@ -30,6 +30,7 @@ Advanced settings are supported with local named templates, auto-recommendations
 - Branch list with pagination (`Load more branches`).
 - Advanced settings (root/build/output/env) included in deploy URL generation where supported.
 - Local deploy templates in browser storage (multi-slot): save/load/delete/clear-all.
+- Local deploy history (last 25 runs): provider/repo/branch/config snapshot + re-run link.
 - Auto-recommendation endpoint for build config detection based on repository files (`/api/github/repo-config`).
 - Provider capability matrix in dashboard (branch/build/env behavior visibility).
 
@@ -61,6 +62,7 @@ src/
     providers.tsx
   lib/
     auth.ts
+    deploy-history.ts
     deploy-links.ts
     utils.ts
   types/

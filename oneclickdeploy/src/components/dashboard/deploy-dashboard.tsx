@@ -12,6 +12,13 @@ import {
   type DeployPresetFields,
   type DeployPresetItem,
 } from "@/lib/deploy-preset";
+import {
+  clearDeployHistory,
+  loadDeployHistory,
+  recordDeployHistory,
+  type DeployHistoryEntry,
+  type DeployProvider,
+} from "@/lib/deploy-history";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -80,6 +87,10 @@ function buildStateBadge(tone: StatusTone, label: string) {
   return { tone, label } as const;
 }
 
+function normalizeHistoryText(value: string): string {
+  return value.trim();
+}
+
 export function DeployDashboard() {
   const [repos, setRepos] = useState<RepoItem[]>([]);
   const [branches, setBranches] = useState<BranchItem[]>([]);
@@ -93,6 +104,7 @@ export function DeployDashboard() {
   const [envText, setEnvText] = useState("");
   const [presetName, setPresetName] = useState("");
   const [presetItems, setPresetItems] = useState<DeployPresetItem[]>([]);
+  const [historyItems, setHistoryItems] = useState<DeployHistoryEntry[]>([]);
   const [repoRecommendationNotes, setRepoRecommendationNotes] = useState<string[]>([]);
   const [repoRecommendationFramework, setRepoRecommendationFramework] = useState<string>("unknown");
   const [recommendationLoading, setRecommendationLoading] = useState(false);
@@ -125,6 +137,16 @@ export function DeployDashboard() {
     setPresetItems(result.items);
   }
 
+  function readHistoryIntoState() {
+    const result = loadDeployHistory();
+    if (!result.ok) {
+      setPresetNotice({ tone: "error", message: result.error });
+      return;
+    }
+
+    setHistoryItems(result.items);
+  }
+
   useEffect(() => {
     const migrateResult = migratePresetStorageToV2();
     if (!migrateResult.ok) {
@@ -133,6 +155,7 @@ export function DeployDashboard() {
     }
 
     readPresetItemsIntoState();
+    readHistoryIntoState();
   }, []);
 
   useEffect(() => {
@@ -375,6 +398,62 @@ export function DeployDashboard() {
     } finally {
       setRecommendationLoading(false);
     }
+  }
+
+  function getDeployUrlByProvider(provider: DeployProvider): string {
+    if (provider === "vercel") return vercelUrl;
+    if (provider === "netlify") return netlifyUrl;
+    return cloudflareUrl;
+  }
+
+  function getHistoryConfigEntry(entry: DeployHistoryEntry): DeployPresetFields {
+    return {
+      rootDirectory: entry.rootDirectory,
+      buildCommand: entry.buildCommand,
+      outputDirectory: entry.outputDirectory,
+      envText,
+    };
+  }
+
+  function handleRecordDeploy(provider: DeployProvider) {
+    if (!selectedRepo || !selectedBranch) {
+      return;
+    }
+
+    const deployUrl = getDeployUrlByProvider(provider);
+    const result = recordDeployHistory({
+      provider,
+      repoFullName: selectedRepo.fullName,
+      repoUrl: selectedRepo.htmlUrl,
+      branch: selectedBranch,
+      config: deployConfig,
+      deployUrl,
+    });
+
+    if (!result.ok) {
+      setPresetNotice({ tone: "error", message: result.error });
+      return;
+    }
+
+    readHistoryIntoState();
+  }
+
+  function handleApplyHistoryEntry(entry: DeployHistoryEntry) {
+    applyDeployFields(getHistoryConfigEntry(entry));
+    setSearch(normalizeHistoryText(entry.repoFullName));
+    setSelectedBranch(entry.branch);
+    setPresetNotice({ tone: "success", message: `Applied settings from ${entry.provider} run.` });
+  }
+
+  function handleClearHistory() {
+    const result = clearDeployHistory();
+    if (!result.ok) {
+      setPresetNotice({ tone: "error", message: result.error });
+      return;
+    }
+
+    readHistoryIntoState();
+    setPresetNotice({ tone: "success", message: "Deploy history cleared." });
   }
 
   const vercelUrl = selectedRepo
@@ -737,6 +816,7 @@ export function DeployDashboard() {
                 href={vercelUrl}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => handleRecordDeploy("vercel")}
                 className={`inline-flex h-14 items-center justify-center gap-2 rounded-xl text-base font-semibold transition-all duration-200 ${
                   deployDisabled
                     ? "pointer-events-none bg-slate-800 text-slate-500"
@@ -750,6 +830,7 @@ export function DeployDashboard() {
                 href={netlifyUrl}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => handleRecordDeploy("netlify")}
                 className={`inline-flex h-14 items-center justify-center gap-2 rounded-xl text-base font-semibold transition-all duration-200 ${
                   deployDisabled
                     ? "pointer-events-none bg-slate-800 text-slate-500"
@@ -763,6 +844,7 @@ export function DeployDashboard() {
                 href={cloudflareUrl}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => handleRecordDeploy("cloudflare")}
                 className={`inline-flex h-14 items-center justify-center gap-2 rounded-xl text-base font-semibold transition-all duration-200 ${
                   deployDisabled
                     ? "pointer-events-none bg-slate-800 text-slate-500"
@@ -818,6 +900,50 @@ export function DeployDashboard() {
               <Button variant="outline" className="w-full sm:w-auto" onClick={handleRefreshRepositories}>
                 Refresh repositories
               </Button>
+            </div>
+
+            <div className="mt-6 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-medium text-slate-100">Recent deploys</p>
+                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={handleClearHistory}>
+                  Clear history
+                </Button>
+              </div>
+
+              {historyItems.length === 0 ? (
+                <p className="mt-3 text-xs text-slate-400">No deploys recorded yet. Launch a provider to create your first reusable run.</p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {historyItems.map((entry) => (
+                    <div key={entry.id} className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm text-slate-100">
+                          {entry.repoFullName} <span className="text-slate-400">via {entry.provider}</span>
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Branch: {entry.branch || "-"} · Root: {entry.rootDirectory || "."} · Build: {entry.buildCommand || "-"}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(entry.createdAt).toLocaleString()} · Env keys: {entry.envKeys.length > 0 ? entry.envKeys.join(", ") : "none"}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => handleApplyHistoryEntry(entry)}>
+                          Apply config
+                        </Button>
+                        <a
+                          href={entry.deployUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-700/80 bg-slate-900/70 px-4 text-sm text-slate-100 transition hover:border-cyan-400 hover:text-cyan-200"
+                        >
+                          Re-run deploy
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
