@@ -60,6 +60,14 @@ export function IconCloud(props: IconProps) {
   );
 }
 
+export function IconBolt(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M13 2 5 13h5l-1 9 8-11h-5l1-9Z" />
+    </IconBase>
+  );
+}
+
 export function IconSearch(props: IconProps) {
   return (
     <IconBase {...props}>

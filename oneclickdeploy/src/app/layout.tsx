@@ -8,7 +8,7 @@ const mono = JetBrains_Mono({ variable: "--font-jetbrains-mono", subsets: ["lati
 
 export const metadata: Metadata = {
   title: "Deploy Buttons",
-  description: "Login with GitHub and open one-click deploy flows for Vercel and Netlify",
+  description: "Login with GitHub and open one-click deploy flows for Vercel, Netlify, and Cloudflare",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

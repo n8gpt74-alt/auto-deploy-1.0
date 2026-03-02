@@ -18,7 +18,7 @@ export default function HomePage() {
       <section className="relative mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-4 py-14 sm:px-6 sm:py-16">
         <p className="mb-4 text-xs uppercase tracking-[0.3em] text-cyan-300">Deploy Buttons MVP</p>
         <h1 className="max-w-4xl text-3xl font-semibold leading-tight sm:text-5xl md:text-6xl">
-          One-click deploy from GitHub to Vercel or Netlify
+          One-click deploy from GitHub to Vercel, Netlify, or Cloudflare
         </h1>
         <p className="mt-5 max-w-2xl text-base text-slate-300 sm:text-lg">
           Быстрый запуск деплоя с визуальными статусами, анимированным интерфейсом и удобным мобильным экраном.

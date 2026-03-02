@@ -19,7 +19,7 @@ export default function LoginPage() {
             <p className="mb-4 text-xs uppercase tracking-[0.3em] text-cyan-300">Deploy Buttons</p>
             <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">Sign in with GitHub</h1>
             <p className="mt-4 max-w-xl text-sm text-slate-300 sm:text-base">
-              Авторизуйся, чтобы загрузить репозитории, выбрать ветку и открыть deploy flow в Vercel или Netlify.
+              Авторизуйся, чтобы загрузить репозитории, выбрать ветку и открыть deploy flow в Vercel, Netlify или Cloudflare.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-2">

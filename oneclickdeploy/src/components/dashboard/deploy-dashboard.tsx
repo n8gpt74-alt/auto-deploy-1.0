@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { createNetlifyDeployUrl, createVercelDeployUrl } from "@/lib/deploy-links";
+import { createCloudflareDeployUrl, createNetlifyDeployUrl, createVercelDeployUrl } from "@/lib/deploy-links";
 import { clearDeployPreset, loadDeployPreset, saveDeployPreset } from "@/lib/deploy-preset";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Accordion, AccordionContent, AccordionTrigger } from "@/components/ui/accordion";
 import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
-import { IconBranch, IconCloud, IconGithub, IconLogout, IconRepo, IconRocket, IconSearch, IconSettings } from "@/components/ui/icons";
+import { IconBolt, IconBranch, IconCloud, IconGithub, IconLogout, IconRepo, IconRocket, IconSearch, IconSettings } from "@/components/ui/icons";
 
 type RepoItem = {
   id: number;
@@ -306,6 +306,17 @@ export function DeployDashboard() {
       )
     : "#";
 
+  const cloudflareUrl = selectedRepo
+    ? createCloudflareDeployUrl(
+        {
+          owner: selectedRepo.owner,
+          name: selectedRepo.name,
+          htmlUrl: selectedRepo.htmlUrl,
+          branch: selectedBranch,
+        },
+      )
+    : "#";
+
   const deployDisabled = !selectedRepo || !selectedBranch;
 
   const repoStateBadge =
@@ -346,7 +357,7 @@ export function DeployDashboard() {
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Deploy Buttons</p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">GitHub -&gt; Vercel / Netlify</h1>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">GitHub -&gt; Vercel / Netlify / Cloudflare</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-300 sm:text-base">
               Choose repository and branch, monitor status chips, and open provider setup with prefilled parameters.
             </p>
@@ -522,7 +533,7 @@ export function DeployDashboard() {
                     placeholder={"API_URL=https://api.example.com\nNODE_ENV=production"}
                   />
                   <p className="text-xs text-slate-400">
-                    Vercel: only environment variable names are passed. Netlify: keys and values are passed in URL hash.
+                    Vercel: only environment variable names are passed. Netlify: keys and values are passed in URL hash. Cloudflare: uses only repository URL via deploy button.
                   </p>
                 </div>
 
@@ -572,7 +583,7 @@ export function DeployDashboard() {
               </p>
             </div>
 
-            <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+            <div className="grid gap-3 sm:gap-4 md:grid-cols-3">
               <a
                 href={vercelUrl}
                 target="_blank"
@@ -599,11 +610,25 @@ export function DeployDashboard() {
                 <IconRocket className="size-5" />
                 Deploy to Netlify
               </a>
+              <a
+                href={cloudflareUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={`inline-flex h-14 items-center justify-center gap-2 rounded-xl text-base font-semibold transition-all duration-200 ${
+                  deployDisabled
+                    ? "pointer-events-none bg-slate-800 text-slate-500"
+                    : "bg-amber-300 text-slate-950 shadow-lg shadow-amber-500/20 hover:-translate-y-0.5 hover:bg-amber-200 hover:shadow-amber-300/30"
+                }`}
+              >
+                <IconBolt className="size-5" />
+                Deploy to Cloudflare
+              </a>
             </div>
 
-            <div className="grid gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-100 md:grid-cols-2">
+            <div className="grid gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-100 md:grid-cols-3">
               <p>Vercel: branch is not passed because Deploy Button has no stable documented branch parameter.</p>
               <p>Netlify: branch is passed via query `branch`, root directory via `base`.</p>
+              <p>Cloudflare: opens Workers Deploy Button (`url` param). This flow supports Workers apps, not Pages apps.</p>
             </div>
 
             <div className="pt-2">

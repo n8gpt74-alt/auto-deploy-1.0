@@ -90,3 +90,10 @@ export function createNetlifyDeployUrl(repo: RepoSelection, config: BuildConfigI
 
   return `${url}#${hashParams.toString()}`;
 }
+
+export function createCloudflareDeployUrl(repo: RepoSelection): string {
+  // Cloudflare Deploy Button supports Workers templates via repo URL.
+  // Official format: https://deploy.workers.cloudflare.com/?url=<GIT_REPO_URL>
+  const params = new URLSearchParams({ url: repo.htmlUrl });
+  return `https://deploy.workers.cloudflare.com/?${params.toString()}`;
+}

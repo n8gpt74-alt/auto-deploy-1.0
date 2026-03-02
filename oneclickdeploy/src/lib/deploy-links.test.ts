@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createNetlifyDeployUrl, createVercelDeployUrl, parseEnvText } from "./deploy-links";
+import { createCloudflareDeployUrl, createNetlifyDeployUrl, createVercelDeployUrl, parseEnvText } from "./deploy-links";
 
 describe("parseEnvText", () => {
   it("parses valid KEY=VALUE lines and ignores invalid lines", () => {
@@ -67,5 +67,22 @@ describe("createNetlifyDeployUrl", () => {
     expect(parsed.searchParams.get("base")).toBe("apps/web");
     expect(hash.get("API_URL")).toBe("https://api.example.com");
     expect(hash.get("NODE_ENV")).toBe("production");
+  });
+});
+
+describe("createCloudflareDeployUrl", () => {
+  it("builds a cloudflare deploy URL with repository url", () => {
+    const url = createCloudflareDeployUrl({
+      owner: "acme",
+      name: "web",
+      htmlUrl: "https://github.com/acme/web",
+      branch: "main",
+    });
+
+    const parsed = new URL(url);
+
+    expect(parsed.origin).toBe("https://deploy.workers.cloudflare.com");
+    expect(parsed.pathname).toBe("/");
+    expect(parsed.searchParams.get("url")).toBe("https://github.com/acme/web");
   });
 });
