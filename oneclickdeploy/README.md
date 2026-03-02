@@ -5,6 +5,8 @@ Minimal web service: login with GitHub, pick repository + branch, open one-click
 - Deploy to Vercel
 - Deploy to Netlify
 
+Advanced settings are supported with a local browser preset (single-slot save/load/clear).
+
 ## Stack
 
 - Next.js (App Router) + TypeScript
@@ -19,6 +21,14 @@ Minimal web service: login with GitHub, pick repository + branch, open one-click
 - No server-side Vercel/Netlify API calls
 - No provider token storage
 - GitHub OAuth is used only to read repos/branches
+
+## Current MVP capabilities
+
+- GitHub login and protected dashboard routes.
+- Repository list with pagination (`Load more repositories`).
+- Branch list with pagination (`Load more branches`).
+- Advanced settings (root/build/output/env) included in deploy URL generation where supported.
+- Local deploy preset in browser storage (single-slot): save/load/clear.
 
 ## Project structure
 
@@ -108,7 +118,8 @@ Open `http://localhost:3000`.
 - Protected routes:
   - `/dashboard/*`
   - `/api/github/*`
-- GitHub API calls are made only on server route handlers using access token from Auth.js session.
+- GitHub API calls are made only on server route handlers.
+- GitHub access token stays server-side in JWT and is not projected into client session data.
 - Error states handled:
   - unauthorized token
   - no access to repository
@@ -120,5 +131,15 @@ Open `http://localhost:3000`.
 ```bash
 npm run lint
 npm run typecheck
+npm run test
 npm run build
 ```
+
+## CI quality gates
+
+GitHub Actions workflow (`.github/workflows/ci.yml`) runs:
+
+- lint
+- typecheck
+- tests
+- production build

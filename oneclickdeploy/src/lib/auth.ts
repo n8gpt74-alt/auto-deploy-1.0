@@ -1,16 +1,29 @@
 import type { NextAuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
 
+function requireEnv(name: "NEXTAUTH_SECRET" | "GITHUB_CLIENT_ID" | "GITHUB_CLIENT_SECRET"): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+const nextAuthSecret = requireEnv("NEXTAUTH_SECRET");
+const githubClientId = requireEnv("GITHUB_CLIENT_ID");
+const githubClientSecret = requireEnv("GITHUB_CLIENT_SECRET");
+
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: nextAuthSecret,
   session: { strategy: "jwt" },
   providers: [
     GitHubProvider({
-      clientId: process.env.GITHUB_CLIENT_ID ?? "",
-      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
+      clientId: githubClientId,
+      clientSecret: githubClientSecret,
       authorization: { params: { scope: "read:user user:email repo" } },
     }),
   ],
+  debug: process.env.NODE_ENV === "development",
   callbacks: {
     async jwt({ token, account, user }) {
       if (account?.provider === "github" && account.access_token) {
@@ -25,7 +38,6 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = typeof token.userId === "string" ? token.userId : token.sub ?? "";
       }
-      session.accessToken = typeof token.accessToken === "string" ? token.accessToken : undefined;
       return session;
     },
   },
