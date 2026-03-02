@@ -10,11 +10,11 @@ type StatusBadgeProps = {
 };
 
 const containerByTone: Record<StatusTone, string> = {
-  success: "border-emerald-500/40 bg-emerald-500/10 text-emerald-200",
-  warning: "border-amber-500/40 bg-amber-500/10 text-amber-100",
-  error: "border-rose-500/40 bg-rose-500/10 text-rose-200",
-  loading: "border-cyan-400/40 bg-cyan-400/10 text-cyan-100",
-  neutral: "border-slate-600/70 bg-slate-900/60 text-slate-200",
+  success: "border-[#ff4500] bg-black text-[#ff4500]",
+  warning: "border-yellow-400 bg-black text-yellow-400",
+  error: "border-red-500 bg-black text-red-500",
+  loading: "border-white bg-black text-white",
+  neutral: "border-[#333333] bg-black text-white",
 };
 
 export function StatusBadge({ tone, label, className }: StatusBadgeProps) {
@@ -23,7 +23,7 @@ export function StatusBadge({ tone, label, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium tracking-wide",
+        "inline-flex items-center gap-1.5 border-[1px] px-2 py-0.5 text-[11px] font-mono font-bold uppercase tracking-widest",
         containerByTone[tone],
         className,
       )}

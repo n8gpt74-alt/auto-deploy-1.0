@@ -9,11 +9,11 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/20 hover:-translate-y-0.5 hover:bg-cyan-300 hover:shadow-cyan-400/30",
+    "bg-[#ff4500] text-black border border-[#ff4500] hover:bg-black hover:text-[#ff4500] shadow-[4px_4px_0px_0px_#ffffff]",
   secondary:
-    "bg-teal-400 text-slate-950 shadow-lg shadow-teal-500/20 hover:-translate-y-0.5 hover:bg-teal-300 hover:shadow-teal-400/30",
+    "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#ff4500]",
   outline:
-    "border border-slate-600/80 bg-slate-900/60 text-slate-100 hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-800/80",
+    "bg-transparent border border-[#333333] text-white hover:border-[#ff4500] hover:text-[#ff4500] shadow-[4px_4px_0px_0px_#ff4500]",
 };
 
 export function Button({ className, variant = "primary", type = "button", ...props }: ButtonProps) {
@@ -21,7 +21,7 @@ export function Button({ className, variant = "primary", type = "button", ...pro
     <button
       type={type}
       className={cn(
-        "inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all duration-200 will-change-transform active:translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex h-12 uppercase tracking-widest items-center justify-center gap-2 rounded-none px-6 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_var(--tw-shadow-color)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#ff4500] focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:cursor-not-allowed disabled:opacity-60",
         variants[variant],
         className,
       )}

@@ -5,60 +5,101 @@ import { signIn, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { IconGithub, IconRocket } from "@/components/ui/icons";
+import { ThreeHero } from "@/components/ui/three-hero";
+import { motion } from "framer-motion";
 
 export default function HomePage() {
   const { data: session } = useSession();
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.15,
+      },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    show: { y: 0, opacity: 1, transition: { type: "spring" as const, stiffness: 100 } },
+  };
+
   return (
-    <main className="relative min-h-screen overflow-hidden text-slate-100">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(6,182,212,0.22),transparent_38%),radial-gradient(circle_at_85%_5%,rgba(20,184,166,0.2),transparent_35%),linear-gradient(135deg,#020617_0%,#0f172a_45%,#020617_100%)]" />
-      <div className="floating-orb floating-orb--cyan -left-24 top-20 size-64 opacity-70" />
-      <div className="floating-orb floating-orb--teal -right-16 top-8 size-52 opacity-70" />
+    <main className="relative min-h-screen overflow-hidden bg-black text-white font-mono selection:bg-[#ff4500] selection:text-black">
+      {/* 3D Background */}
+      <ThreeHero />
 
-      <section className="relative mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-4 py-14 sm:px-6 sm:py-16">
-        <p className="mb-4 text-xs uppercase tracking-[0.3em] text-cyan-300">Deploy Buttons MVP</p>
-        <h1 className="max-w-4xl text-3xl font-semibold leading-tight sm:text-5xl md:text-6xl">
-          One-click deploy from GitHub to Vercel, Netlify, or Cloudflare
-        </h1>
-        <p className="mt-5 max-w-2xl text-base text-slate-300 sm:text-lg">
-          Выбери репозиторий и ветку, получи авто-рекомендации конфигурации и запускай деплой с прозрачными ограничениями каждого провайдера.
-        </p>
+      {/* Grid Overlay */}
+      <div className="absolute inset-0 z-0 pointer-events-none bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:50px_50px]" />
 
-        <div className="mt-6 flex flex-wrap gap-2">
-          <StatusBadge tone="success" label="3D Motion UI" />
-          <StatusBadge tone="success" label="Mobile Optimized" />
-          <StatusBadge tone="neutral" label="GitHub Powered" />
-          <StatusBadge tone="neutral" label="Provider limits visible" />
-        </div>
+      {/* Content wrapper */}
+      <div className="relative z-10 mx-auto flex min-h-screen w-full flex-col justify-end px-6 xl:px-16 pb-20 pt-32">
+        <motion.section 
+          variants={containerVariants} 
+          initial="hidden" 
+          animate="show"
+          className="w-full max-w-7xl mx-auto flex flex-col md:flex-row gap-12 justify-between items-end border-t border-[#333333] pt-12"
+        >
+          {/* Left Block - Title */}
+          <motion.div variants={itemVariants} className="flex-1 w-full max-w-2xl">
+            <p className="mb-6 text-sm uppercase tracking-[0.4em] text-[#ff4500] border-l-2 border-[#ff4500] pl-4 font-bold">
+              Automated Operations [System Active]
+            </p>
+            <h1 className="text-5xl sm:text-7xl font-sans font-black uppercase leading-[0.9] tracking-tighter">
+              One-Click <br /> Deploy <br /> Protocol
+            </h1>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <StatusBadge tone="success" label="O O O" />
+              <StatusBadge tone="neutral" label="GitHub Auth" />
+              <StatusBadge tone="neutral" label="Provider Limits" />
+              <StatusBadge tone="warning" label="Raw UI" />
+            </div>
+          </motion.div>
 
-        <div className="mt-8 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:flex-wrap">
-          {!session ? (
-            <Button className="w-full sm:w-auto" onClick={() => signIn("github", { callbackUrl: "/dashboard" })}>
-              <IconGithub className="size-4" />
-              Login with GitHub
-            </Button>
-          ) : (
-            <Link
-              href="/dashboard"
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-300 hover:shadow-cyan-400/30 sm:w-auto"
-            >
-              <IconRocket className="size-4" />
-              Open dashboard
-            </Link>
-          )}
-          <Link
-            href="/login"
-            className="inline-flex h-11 w-full items-center justify-center rounded-xl border border-slate-600/80 bg-slate-900/60 px-5 text-sm font-semibold text-slate-100 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-800/80 sm:w-auto"
-          >
-            Login page
-          </Link>
-        </div>
+          {/* Right Block - Content & Actions */}
+          <motion.div variants={itemVariants} className="flex-[0.8] w-full flex flex-col gap-8 bg-black/60 backdrop-blur-md border border-[#333333] p-8 brutalist-shadow">
+            <p className="text-sm sm:text-base text-gray-400 leading-relaxed max-w-xl">
+              Select a repository and branch. The system auto-detects configuration limits and provides direct injection paths to Vercel, Netlify, and Cloudflare.
+            </p>
+            
+            <div className="flex flex-col gap-4">
+              {!session ? (
+                <Button className="w-full justify-between" onClick={() => signIn("github", { callbackUrl: "/dashboard" })}>
+                  <span className="flex items-center gap-2"><IconGithub className="size-5" /> Authenticate</span>
+                  <span className="text-[#ff4500]">→</span>
+                </Button>
+              ) : (
+                <Link
+                  href="/dashboard"
+                  className="inline-flex h-14 w-full justify-between items-center bg-[#ff4500] px-6 text-sm font-bold text-black border border-[#ff4500] shadow-[4px_4px_0px_0px_#ffffff] transition-all hover:bg-black hover:text-[#ff4500] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_#ffffff] uppercase tracking-widest"
+                >
+                  <span className="flex items-center gap-2"><IconRocket className="size-5" /> Access Dashboard</span>
+                  <span className="font-mono">EXECUTE</span>
+                </Link>
+              )}
+              <Link
+                href="/login"
+                className="inline-flex h-14 w-full justify-between items-center border border-[#333333] bg-transparent px-6 text-sm font-bold text-white shadow-[4px_4px_0px_0px_#ff4500] transition-all hover:border-[#ff4500] hover:text-[#ff4500] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_#ff4500] uppercase tracking-widest"
+              >
+                <span>Manual Login</span>
+                <span className="font-mono">{">_"}</span>
+              </Link>
+            </div>
+          </motion.div>
+        </motion.section>
 
-        <p className="mt-4 max-w-3xl text-xs text-slate-400 sm:text-sm">
-          Для приватных репозиториев требуется GitHub OAuth scope <code>repo</code>. Доступ используется только на сервере для чтения репозиториев/веток и не
-          прокидывается в client session payload.
-        </p>
-      </section>
+        {/* Footer Info */}
+        <motion.div variants={itemVariants} initial="hidden" animate="show" className="mt-16 border-t border-[#333333] pt-6 max-w-7xl mx-auto w-full flex justify-between text-xs text-gray-600 font-mono items-center">
+          <p className="max-w-2xl">
+            SECURITY NOTICE: Requires GitHub OAuth scope [repo]. Access utilized exclusively server-side. Token securely isolated.
+          </p>
+          <div className="hidden sm:block text-[#ff4500] animate-pulse">
+            STATUS: ONLINE
+          </div>
+        </motion.div>
+      </div>
     </main>
   );
 }
