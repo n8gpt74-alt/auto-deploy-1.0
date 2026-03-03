@@ -40,14 +40,14 @@ export default function HomePage() {
           variants={containerVariants} 
           initial="hidden" 
           animate="show"
-          className="w-full max-w-7xl mx-auto flex flex-col md:flex-row gap-12 justify-between items-end border-t border-[#333333] pt-12"
+          className="w-full max-w-7xl mx-auto flex flex-col md:flex-row gap-24 justify-between items-end border-t border-[#333333] pt-12"
         >
           {/* Left Block - Title */}
           <motion.div variants={itemVariants} className="flex-1 w-full max-w-2xl">
             <p className="mb-6 text-sm uppercase tracking-[0.4em] text-[#ff4500] border-l-2 border-[#ff4500] pl-4 font-bold">
               Автоматизированные Операции [Система Активна]
             </p>
-            <h1 className="text-5xl sm:text-7xl font-sans font-black uppercase leading-[0.9] tracking-tighter">
+            <h1 className="text-5xl sm:text-7xl font-sans font-black uppercase leading-[1.1] tracking-tight">
               Протокол <br /> Деплоя <br /> В Один Клик
             </h1>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -60,7 +60,7 @@ export default function HomePage() {
 
           {/* Right Block - Content & Actions */}
           <motion.div variants={itemVariants} className="flex-[0.8] w-full flex flex-col gap-8 bg-black/60 backdrop-blur-md border border-[#333333] p-8 brutalist-shadow">
-            <p className="text-sm sm:text-base text-gray-400 leading-relaxed max-w-xl">
+            <p className="text-sm sm:text-base text-gray-400 leading-loose max-w-xl">
               Выберите репозиторий и ветку. Система автоматически определит конфигурацию и предоставит прямые пути развертывания в Vercel, Netlify и Cloudflare.
             </p>
             
@@ -92,7 +92,7 @@ export default function HomePage() {
 
         {/* Footer Info */}
         <motion.div variants={itemVariants} initial="hidden" animate="show" className="mt-16 border-t border-[#333333] pt-6 max-w-7xl mx-auto w-full flex justify-between text-xs text-gray-600 font-mono items-center">
-          <p className="max-w-2xl">
+          <p className="max-w-2xl leading-loose">
             ОБРАТИТЕ ВНИМАНИЕ: Требуется GitHub OAuth scope [repo]. Доступ используется исключительно на стороне сервера. Токен надежно изолирован.
           </p>
           <div className="hidden sm:block text-[#ff4500] animate-pulse">

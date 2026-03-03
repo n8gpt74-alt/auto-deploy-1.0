@@ -13,7 +13,7 @@ export default function LoginPage() {
       <section className="relative z-10 mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-4 py-12 sm:px-6 sm:py-16">
         <div className="border border-[#333333] bg-black/80 backdrop-blur-md p-6 sm:p-10 brutalist-shadow">
           <p className="mb-4 text-sm uppercase tracking-[0.4em] text-[#ff4500] font-bold border-l-2 border-[#ff4500] pl-4">Протокол Деплоя</p>
-          <h1 className="text-4xl sm:text-5xl font-black uppercase leading-[0.9] tracking-tighter font-sans">Вход через GitHub</h1>
+          <h1 className="text-4xl sm:text-5xl font-black uppercase leading-[1.1] tracking-tight font-sans">Вход через GitHub</h1>
           <p className="mt-6 max-w-xl text-sm sm:text-base text-gray-400">
             Авторизуйся, чтобы загрузить репозитории и ветки, получить авто-рекомендации конфигурации и открыть deploy flow в Vercel, Netlify или Cloudflare.
           </p>
