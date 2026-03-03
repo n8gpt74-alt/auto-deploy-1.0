@@ -187,6 +187,57 @@ export function DeployDashboard() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const [openLogsId, setOpenLogsId] = useState<number | null>(null);
+  const [deploymentLogs, setDeploymentLogs] = useState<Record<number, string[]>>({});
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  async function fetchLogs(deploymentId: number) {
+    if (!selectedRepo) return;
+    setLogsLoading(true);
+    try {
+      const res = await fetch(
+        `/api/github/logs?owner=${selectedRepo.owner}&repo=${selectedRepo.name}&deploymentId=${deploymentId}`,
+      );
+      const json = await res.json();
+      if (json.logLines) {
+        setDeploymentLogs((prev) => ({ ...prev, [deploymentId]: json.logLines }));
+      }
+    } catch {
+      toast("error", "Не удалось загрузить логи");
+    } finally {
+      setLogsLoading(false);
+    }
+  }
+
+  // Poll logs if terminal is open and deployment is not in a final state
+  useEffect(() => {
+    if (openLogsId === null) return;
+
+    const dep = deployStatuses.find((d) => d.id === openLogsId);
+    if (!dep || ["ready", "error", "inactive"].includes(dep.state)) return;
+
+    const interval = setInterval(() => {
+      fetchLogs(openLogsId);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [openLogsId, deployStatuses]);
+
+  const [isBulkMode, setIsBulkMode] = useState(false);
+  const [selectedRepoIds, setSelectedRepoIds] = useState<Set<string>>(new Set());
+
+  function toggleRepoSelection(repoId: string) {
+    setSelectedRepoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(repoId)) {
+        next.delete(repoId);
+      } else {
+        next.add(repoId);
+      }
+      return next;
+    });
+  }
+
   function applyDeployFields(fields: DeployPresetFields) {
     setRootDirectory(fields.rootDirectory);
     setBuildCommand(fields.buildCommand);
@@ -602,6 +653,52 @@ export function DeployDashboard() {
     };
   }, []);
 
+  function handleBulkDeploy(provider: DeployProvider) {
+    const selectedRepos = repos.filter((r) => selectedRepoIds.has(String(r.id)));
+    if (selectedRepos.length === 0) return;
+
+    toast(
+      "info",
+      `Запуск массового деплоя для ${selectedRepos.length} репозиториев через ${provider}...`,
+    );
+
+    selectedRepos.forEach((repo, index) => {
+      const config: DeployPresetFields = {
+        rootDirectory: "",
+        buildCommand: "",
+        outputDirectory: "",
+        envText: "",
+      };
+
+      const repoInfo = {
+        owner: repo.owner,
+        name: repo.name,
+        htmlUrl: repo.htmlUrl,
+        branch: repo.defaultBranch,
+      };
+
+      let deployUrl = "#";
+      if (provider === "vercel") deployUrl = createVercelDeployUrl(repoInfo, config);
+      else if (provider === "netlify") deployUrl = createNetlifyDeployUrl(repoInfo, config);
+      else if (provider === "cloudflare") deployUrl = createCloudflareDeployUrl(repoInfo);
+      else if (provider === "railway") deployUrl = createRailwayDeployUrl(repoInfo, config);
+      else if (provider === "render") deployUrl = createRenderDeployUrl(repoInfo);
+
+      setTimeout(() => {
+        window.open(deployUrl, "_blank", "noopener,noreferrer");
+        recordDeployHistory({
+          provider,
+          repoFullName: repo.fullName,
+          repoUrl: repo.htmlUrl,
+          branch: repo.defaultBranch,
+          config,
+          deployUrl,
+        });
+        readHistoryIntoState();
+      }, index * 400);
+    });
+  }
+
   function triggerDeploy(provider: DeployProvider) {
     if (!selectedRepo || !selectedBranch) return;
     const deployUrl = getDeployUrlByProvider(provider);
@@ -799,68 +896,133 @@ export function DeployDashboard() {
                   placeholder="owner/repo"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
+                  ref={searchInputRef}
                 />
               </div>
             </div>
 
+            <div className="flex items-center justify-between mb-4 mt-2">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Режим Выбора</p>
+              <div className="flex border border-[#333333] p-1 scale-90 origin-right">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkMode(false)}
+                  className={`px-3 py-1 text-[10px] font-bold uppercase tracking-tighter transition-all ${!isBulkMode ? "bg-[#ff4500] text-black" : "text-gray-500 hover:text-white"}`}
+                >
+                  Одиночный
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsBulkMode(true)}
+                  className={`px-3 py-1 text-[10px] font-bold uppercase tracking-tighter transition-all ${isBulkMode ? "bg-[#ff4500] text-black" : "text-gray-500 hover:text-white"}`}
+                >
+                  Массовый
+                </button>
+              </div>
+            </div>
+
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="space-y-2">
+              <div className={`space-y-2 ${isBulkMode ? "lg:col-span-2" : ""}`}>
                 <label
                   htmlFor="repo-select"
                   className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]"
                 >
-                  <IconGithub className="size-4" />
-                  Репозиторий
+                  <IconRepo className="size-4" />
+                  {isBulkMode ? "Выбор репозиториев (Массово)" : "Репозиторий"}
                 </label>
-                <select
-                  id="repo-select"
-                  value={selectedRepoId}
-                  onChange={(event) => {
-                    setBranches([]);
-                    setBranchesPage(1);
-                    setBranchesHasNextPage(false);
-                    setSelectedBranch("");
-                    setSelectedRepoId(event.target.value);
-                  }}
-                  className="h-12 w-full rounded-none border border-[#333333] bg-black px-3 text-sm text-white outline-none transition focus:border-[#ff4500] focus:ring-1 focus:ring-[#ff4500]"
-                  disabled={reposLoading || filteredRepos.length === 0}
-                >
-                  {filteredRepos.length === 0 ? (
-                    <option value="">Нет репозиториев</option>
-                  ) : null}
-                  {filteredRepos.map((repo) => (
-                    <option key={repo.id} value={String(repo.id)}>
-                      {repo.fullName}
-                    </option>
-                  ))}
-                </select>
+                
+                {isBulkMode ? (
+                  <div className="border border-[#333333] bg-[#0a0a0a] min-h-[160px] max-h-[300px] overflow-y-auto p-2 space-y-1 brutalist-shadow custom-scrollbar">
+                    {filteredRepos.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-gray-500 font-mono italic">
+                        {reposLoading ? "Загрузка..." : "Репозитории не найдены"}
+                      </div>
+                    ) : (
+                      filteredRepos.map((repo) => {
+                        const isSelected = selectedRepoIds.has(String(repo.id));
+                        return (
+                          <button
+                            key={repo.id}
+                            type="button"
+                            onClick={() => toggleRepoSelection(String(repo.id))}
+                            className={`w-full flex items-center gap-3 p-3 text-left text-sm font-mono transition-all border ${
+                              isSelected 
+                                ? "border-[#ff4500] bg-[#ff4500]/10 text-white" 
+                                : "border-transparent text-gray-400 hover:text-white hover:bg-[#111]"
+                            }`}
+                          >
+                            <div className={`size-4 border flex items-center justify-center shrink-0 ${
+                              isSelected ? "border-[#ff4500] bg-[#ff4500]" : "border-[#333333]"
+                            }`}>
+                              {isSelected && <div className="size-2 bg-black" />}
+                            </div>
+                            <span className="truncate">{repo.fullName}</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                ) : (
+                  <select
+                    id="repo-select"
+                    value={selectedRepoId}
+                    onChange={(event) => {
+                      setBranches([]);
+                      setBranchesPage(1);
+                      setBranchesHasNextPage(false);
+                      setSelectedBranch("");
+                      setSelectedRepoId(event.target.value);
+                    }}
+                    className="h-12 w-full rounded-none border border-[#333333] bg-black px-3 text-sm text-white outline-none transition focus:border-[#ff4500] focus:ring-1 focus:ring-[#ff4500]"
+                    disabled={reposLoading || filteredRepos.length === 0}
+                  >
+                    {filteredRepos.length === 0 ? (
+                      <option value="">Нет репозиториев</option>
+                    ) : (
+                      <>
+                        <option value="" disabled>Выберите репозиторий</option>
+                        {filteredRepos.map((repo) => (
+                          <option key={repo.id} value={String(repo.id)}>
+                            {repo.fullName}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                )}
               </div>
 
-              <div className="space-y-2">
-                <label
-                  htmlFor="branch-select"
-                  className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]"
-                >
-                  <IconBranch className="size-4" />
-                  Ветка
-                </label>
-                <select
-                  id="branch-select"
-                  value={selectedBranch}
-                  onChange={(event) => setSelectedBranch(event.target.value)}
-                  className="h-12 w-full rounded-none border border-[#333333] bg-black px-3 text-sm text-white outline-none transition focus:border-[#ff4500] focus:ring-1 focus:ring-[#ff4500]"
-                  disabled={branchesLoading || branches.length === 0}
-                >
-                  {branches.length === 0 ? (
-                    <option value="">Нет веток</option>
-                  ) : null}
-                  {branches.map((branch) => (
-                    <option key={branch.name} value={branch.name}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {!isBulkMode && (
+                <div className="space-y-2">
+                  <label
+                    htmlFor="branch-select"
+                    className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]"
+                  >
+                    <IconBranch className="size-4" />
+                    Ветка
+                  </label>
+                  <select
+                    id="branch-select"
+                    value={selectedBranch}
+                    onChange={(event) => setSelectedBranch(event.target.value)}
+                    className="h-12 w-full rounded-none border border-[#333333] bg-black px-3 text-sm text-white outline-none transition focus:border-[#ff4500] focus:ring-1 focus:ring-[#ff4500]"
+                    disabled={branchesLoading || branches.length === 0}
+                  >
+                    {branches.length === 0 ? (
+                      <option value="">Нет веток</option>
+                    ) : (
+                      <>
+                        <option value="" disabled>Выберите ветку</option>
+                        {branches.map((branch) => (
+                          <option key={branch.name} value={branch.name}>
+                            {branch.name}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                </div>
+              )}
             </div>
 
             {reposLoading ? (
@@ -911,6 +1073,69 @@ export function DeployDashboard() {
                 </Button>
               ) : null}
             </div>
+
+            {isBulkMode && selectedRepoIds.size > 0 && (
+              <div className="mt-8 border-t border-[#333333] pt-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex flex-col text-left">
+                    <p className="text-xs font-bold uppercase tracking-widest text-[#ff4500]">
+                      Массовый деплой
+                    </p>
+                    <p className="text-[10px] font-mono text-gray-500">
+                      Выбрано проектов: {selectedRepoIds.size}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRepoIds(new Set())}
+                    className="text-[10px] uppercase font-bold text-gray-500 hover:text-white underline underline-offset-4"
+                  >
+                    Сбросить выбор
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  <Button
+                    variant="outline"
+                    className="h-10 text-[10px]"
+                    onClick={() => handleBulkDeploy("vercel")}
+                  >
+                    Vercel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-10 text-[10px]"
+                    onClick={() => handleBulkDeploy("netlify")}
+                  >
+                    Netlify
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-10 text-[10px]"
+                    onClick={() => handleBulkDeploy("cloudflare")}
+                  >
+                    Cloudflare
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-10 text-[10px]"
+                    onClick={() => handleBulkDeploy("railway")}
+                  >
+                    Railway
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-10 text-[10px]"
+                    onClick={() => handleBulkDeploy("render")}
+                  >
+                    Render
+                  </Button>
+                </div>
+                <p className="mt-4 text-[10px] text-gray-500 font-mono italic">
+                  * Будут открыты новые вкладки с деплоем веток по умолчанию.
+                  Всплывающие окна должны быть разрешены в браузере.
+                </p>
+              </div>
+            )}
 
             <Accordion>
               <AccordionTrigger className="inline-flex items-center gap-2 uppercase tracking-widest font-bold">
@@ -1417,25 +1642,70 @@ export function DeployDashboard() {
                           ) : null}
                         </div>
 
-                        {(d.environmentUrl || d.targetUrl || d.logUrl) ? (
-                          <div className="mt-2 flex flex-wrap gap-3">
-                            {d.environmentUrl ? (
-                              <a href={d.environmentUrl} target="_blank" rel="noreferrer" className="text-[#ff4500] hover:underline">
-                                → Открыть сайт
-                              </a>
-                            ) : null}
-                            {d.targetUrl ? (
-                              <a href={d.targetUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white hover:underline">
-                                → Детали
-                              </a>
-                            ) : null}
-                            {d.logUrl ? (
-                              <a href={d.logUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white hover:underline">
-                                → Логи
-                              </a>
-                            ) : null}
+                        <div className="mt-3 flex flex-wrap gap-3">
+                          {d.environmentUrl ? (
+                            <a href={d.environmentUrl} target="_blank" rel="noreferrer" className="text-[#ff4500] hover:underline">
+                              → Сайт
+                            </a>
+                          ) : null}
+                          {d.targetUrl ? (
+                            <a href={d.targetUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white hover:underline">
+                              → Детали
+                            </a>
+                          ) : null}
+                          {d.logUrl ? (
+                            <a href={d.logUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white hover:underline">
+                              → Провайдер
+                            </a>
+                          ) : null}
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (openLogsId === d.id) {
+                                setOpenLogsId(null);
+                              } else {
+                                setOpenLogsId(d.id);
+                                if (!deploymentLogs[d.id]) {
+                                  fetchLogs(d.id);
+                                }
+                              }
+                            }}
+                            className="text-gray-500 hover:text-white underline underline-offset-4 decoration-gray-700 hover:decoration-white transition-all ml-auto"
+                          >
+                            {openLogsId === d.id ? "Скрыть терминал" : "Логи события"}
+                          </button>
+                        </div>
+
+                        {openLogsId === d.id && (
+                          <div className="mt-4 border border-[#333333] bg-[#050505] p-3 font-mono text-[10px] brutalist-shadow animate-in fade-in zoom-in-95 duration-200">
+                            <div className="flex items-center justify-between border-b border-[#222] pb-2 mb-2">
+                              <span className="text-[#ff4500] font-bold uppercase tracking-widest flex items-center gap-2">
+                                <IconBolt className="size-3" />
+                                Терминал Событий
+                              </span>
+                              <div className="flex gap-1.5">
+                                <div className="size-1.5 rounded-full bg-red-900/50" />
+                                <div className="size-1.5 rounded-full bg-yellow-900/50" />
+                                <div className="size-1.5 rounded-full bg-green-900/50" />
+                              </div>
+                            </div>
+                            <div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1 pr-2">
+                              {logsLoading && !deploymentLogs[d.id] ? (
+                                <p className="text-gray-600 animate-pulse">{">"} Подключение к потоку данных...</p>
+                              ) : (deploymentLogs[d.id] || []).length === 0 ? (
+                                <p className="text-gray-600 italic">{">"} Ожидание регистрации события в GitHub API...</p>
+                              ) : (
+                                deploymentLogs[d.id]?.map((line, idx) => (
+                                  <div key={idx} className="leading-relaxed" dangerouslySetInnerHTML={{ __html: line }} />
+                                ))
+                              )}
+                              {!["ready", "error", "inactive"].includes(d.state) && (
+                                <p className="text-blue-500 animate-pulse mt-1 font-bold">{">"} ПРОСЛУШИВАНИЕ СОБЫТИЙ...</p>
+                              )}
+                            </div>
                           </div>
-                        ) : null}
+                        )}
                       </div>
                     );
                   })}
