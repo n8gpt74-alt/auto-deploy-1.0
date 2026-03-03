@@ -642,10 +642,7 @@ export function DeployDashboard() {
     applyDeployFields(getHistoryConfigEntry(entry));
     setSearch(normalizeHistoryText(entry.repoFullName));
     setSelectedBranch(entry.branch);
-    setPresetNotice({
-      tone: "success",
-      message: `Applied settings from ${entry.provider} run.`,
-    });
+    toast("success", `Applied settings from ${entry.provider} run.`);
   }
 
   function handleClearHistory() {
