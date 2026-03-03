@@ -47,6 +47,7 @@ import {
   IconSettings,
 } from "@/components/ui/icons";
 import { toast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 import { SkeletonList } from "@/components/ui/skeleton";
 import { DeployConfirmModal } from "@/components/ui/deploy-confirm-modal";
 import { parseEnvText } from "@/lib/deploy-links";
