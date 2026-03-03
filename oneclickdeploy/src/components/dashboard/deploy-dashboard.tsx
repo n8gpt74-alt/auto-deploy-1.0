@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { createCloudflareDeployUrl, createNetlifyDeployUrl, createRailwayDeployUrl, createRenderDeployUrl, createVercelDeployUrl } from "@/lib/deploy-links";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createCloudflareDeployUrl,
+  createNetlifyDeployUrl,
+  createRailwayDeployUrl,
+  createRenderDeployUrl,
+  createVercelDeployUrl,
+} from "@/lib/deploy-links";
 import {
   clearDeployPreset,
   deleteDeployPresetItem,
@@ -23,9 +29,23 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Accordion, AccordionContent, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
-import { IconBolt, IconBranch, IconCloud, IconGithub, IconLogout, IconRepo, IconRocket, IconSearch, IconSettings } from "@/components/ui/icons";
+import {
+  IconBolt,
+  IconBranch,
+  IconCloud,
+  IconGithub,
+  IconLogout,
+  IconRepo,
+  IconRocket,
+  IconSearch,
+  IconSettings,
+} from "@/components/ui/icons";
 
 type RepoItem = {
   id: number;
@@ -74,8 +94,24 @@ type RepoConfigResponse = {
   envKeys?: string[];
 };
 
+type DeploymentStatus = {
+  id: number;
+  environment: string;
+  state: string;
+  description: string | null;
+  ref: string;
+  createdAt: string;
+  updatedAt: string;
+  creator: string | null;
+  targetUrl: string | null;
+  environmentUrl: string | null;
+  logUrl: string | null;
+};
+
 const REPO_PAGE_SIZE = 30;
 const BRANCH_PAGE_SIZE = 100;
+const DEPLOY_POLL_INTERVAL_MS = 5000;
+const DEPLOY_POLL_MAX_DURATION_MS = 5 * 60 * 1000;
 
 function formatRateLimitError(error: ApiError): string {
   if (error.resetAt) {
@@ -106,8 +142,11 @@ export function DeployDashboard() {
   const [presetName, setPresetName] = useState("");
   const [presetItems, setPresetItems] = useState<DeployPresetItem[]>([]);
   const [historyItems, setHistoryItems] = useState<DeployHistoryEntry[]>([]);
-  const [repoRecommendationNotes, setRepoRecommendationNotes] = useState<string[]>([]);
-  const [repoRecommendationFramework, setRepoRecommendationFramework] = useState<string>("unknown");
+  const [repoRecommendationNotes, setRepoRecommendationNotes] = useState<
+    string[]
+  >([]);
+  const [repoRecommendationFramework, setRepoRecommendationFramework] =
+    useState<string>("unknown");
   const [recommendationLoading, setRecommendationLoading] = useState(false);
 
   const [reposLoading, setReposLoading] = useState(true);
@@ -120,6 +159,12 @@ export function DeployDashboard() {
   const [branchesPage, setBranchesPage] = useState(1);
   const [branchesHasNextPage, setBranchesHasNextPage] = useState(false);
   const [reposRefreshNonce, setReposRefreshNonce] = useState(0);
+
+  const [deployStatuses, setDeployStatuses] = useState<DeploymentStatus[]>([]);
+  const [statusPolling, setStatusPolling] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollStartRef = useRef<number>(0);
 
   function applyDeployFields(fields: DeployPresetFields) {
     setRootDirectory(fields.rootDirectory);
@@ -164,7 +209,10 @@ export function DeployDashboard() {
       setReposLoading(true);
       setReposError(null);
 
-      const params = new URLSearchParams({ page: String(repoPage), perPage: String(REPO_PAGE_SIZE) });
+      const params = new URLSearchParams({
+        page: String(repoPage),
+        perPage: String(REPO_PAGE_SIZE),
+      });
       const res = await fetch(`/api/github/repos?${params.toString()}`);
       const json = (await res.json()) as ReposApiResponse & ApiError;
 
@@ -319,12 +367,18 @@ export function DeployDashboard() {
 
     setPresetName("");
     readPresetItemsIntoState();
-    setPresetNotice({ tone: "success", message: `Template \"${result.item.name}\" saved locally.` });
+    setPresetNotice({
+      tone: "success",
+      message: `Template \"${result.item.name}\" saved locally.`,
+    });
   }
 
   function handleLoadPreset(item: DeployPresetItem) {
     applyDeployFields(item);
-    setPresetNotice({ tone: "success", message: `Template \"${item.name}\" loaded.` });
+    setPresetNotice({
+      tone: "success",
+      message: `Template \"${item.name}\" loaded.`,
+    });
   }
 
   function handleDeletePreset(id: string) {
@@ -402,9 +456,15 @@ export function DeployDashboard() {
 
       setRepoRecommendationFramework(json.framework ?? "unknown");
       setRepoRecommendationNotes(json.notes ?? []);
-      setPresetNotice({ tone: "success", message: `Авто-рекомендация применена.${discoveredEnvKeys.length > 0 ? ` Обнаружено ${discoveredEnvKeys.length} переменных из .env.example.` : ""}` });
+      setPresetNotice({
+        tone: "success",
+        message: `Авто-рекомендация применена.${discoveredEnvKeys.length > 0 ? ` Обнаружено ${discoveredEnvKeys.length} переменных из .env.example.` : ""}`,
+      });
     } catch {
-      setPresetNotice({ tone: "error", message: "Failed to auto-detect repository configuration." });
+      setPresetNotice({
+        tone: "error",
+        message: "Failed to auto-detect repository configuration.",
+      });
     } finally {
       setRecommendationLoading(false);
     }
@@ -418,7 +478,9 @@ export function DeployDashboard() {
     return cloudflareUrl;
   }
 
-  function getHistoryConfigEntry(entry: DeployHistoryEntry): DeployPresetFields {
+  function getHistoryConfigEntry(
+    entry: DeployHistoryEntry,
+  ): DeployPresetFields {
     return {
       rootDirectory: entry.rootDirectory,
       buildCommand: entry.buildCommand,
@@ -426,6 +488,67 @@ export function DeployDashboard() {
       envText,
     };
   }
+
+  const fetchDeployStatuses = useCallback(async () => {
+    if (!selectedRepo) return;
+    try {
+      const res = await fetch(
+        `/api/github/deployments?owner=${encodeURIComponent(selectedRepo.owner)}&repo=${encodeURIComponent(selectedRepo.name)}`,
+      );
+      if (!res.ok) {
+        setStatusError("Не удалось получить статус деплоев");
+        return;
+      }
+      const json = (await res.json()) as { deployments?: DeploymentStatus[] };
+      const items = json.deployments ?? [];
+      setDeployStatuses(items);
+      setStatusError(null);
+
+      // Auto-stop if all deployments are in terminal state
+      const allTerminal = items.length > 0 && items.every((d) => d.state === "ready" || d.state === "error" || d.state === "inactive");
+      if (allTerminal) {
+        stopPolling();
+      }
+    } catch {
+      setStatusError("Ошибка сети при запросе статуса деплоев");
+    }
+  }, [selectedRepo]);
+
+  function stopPolling() {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    setStatusPolling(false);
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollStartRef.current = Date.now();
+    setStatusPolling(true);
+    setStatusError(null);
+
+    // Immediate first fetch
+    fetchDeployStatuses();
+
+    pollIntervalRef.current = setInterval(() => {
+      // Auto-stop after max duration
+      if (Date.now() - pollStartRef.current > DEPLOY_POLL_MAX_DURATION_MS) {
+        stopPolling();
+        return;
+      }
+      fetchDeployStatuses();
+    }, DEPLOY_POLL_INTERVAL_MS);
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   function handleRecordDeploy(provider: DeployProvider) {
     if (!selectedRepo || !selectedBranch) {
@@ -448,13 +571,18 @@ export function DeployDashboard() {
     }
 
     readHistoryIntoState();
+    // Start polling for deploy status after launching
+    startPolling();
   }
 
   function handleApplyHistoryEntry(entry: DeployHistoryEntry) {
     applyDeployFields(getHistoryConfigEntry(entry));
     setSearch(normalizeHistoryText(entry.repoFullName));
     setSelectedBranch(entry.branch);
-    setPresetNotice({ tone: "success", message: `Applied settings from ${entry.provider} run.` });
+    setPresetNotice({
+      tone: "success",
+      message: `Applied settings from ${entry.provider} run.`,
+    });
   }
 
   function handleClearHistory() {
@@ -492,14 +620,12 @@ export function DeployDashboard() {
       )
     : "#";
   const cloudflareUrl = selectedRepo
-    ? createCloudflareDeployUrl(
-        {
-          owner: selectedRepo.owner,
-          name: selectedRepo.name,
-          htmlUrl: selectedRepo.htmlUrl,
-          branch: selectedBranch,
-        },
-      )
+    ? createCloudflareDeployUrl({
+        owner: selectedRepo.owner,
+        name: selectedRepo.name,
+        htmlUrl: selectedRepo.htmlUrl,
+        branch: selectedBranch,
+      })
     : "#";
 
   const railwayUrl = selectedRepo
@@ -524,48 +650,57 @@ export function DeployDashboard() {
     : "#";
   const deployDisabled = !selectedRepo || !selectedBranch;
 
-  const repoStateBadge =
-    reposLoading
-      ? buildStateBadge("loading", "Репозитории: загрузка")
-      : reposError
-        ? buildStateBadge("error", "Репозитории: ошибка")
-        : repos.length === 0
-          ? buildStateBadge("warning", "Репозитории: пусто")
-          : buildStateBadge("success", `Репозитории: ${repos.length}`);
+  const repoStateBadge = reposLoading
+    ? buildStateBadge("loading", "Репозитории: загрузка")
+    : reposError
+      ? buildStateBadge("error", "Репозитории: ошибка")
+      : repos.length === 0
+        ? buildStateBadge("warning", "Репозитории: пусто")
+        : buildStateBadge("success", `Репозитории: ${repos.length}`);
 
-  const branchStateBadge =
-    !selectedRepo
-      ? buildStateBadge("neutral", "Ветка: не выбрана")
-      : branchesLoading
-        ? buildStateBadge("loading", "Ветки: загрузка")
-        : branchesError
-          ? buildStateBadge("error", "Ветки: ошибка")
-          : branches.length === 0
-            ? buildStateBadge("warning", "Ветки: пусто")
-            : buildStateBadge("success", `Ветки: ${branches.length}`);
+  const branchStateBadge = !selectedRepo
+    ? buildStateBadge("neutral", "Ветка: не выбрана")
+    : branchesLoading
+      ? buildStateBadge("loading", "Ветки: загрузка")
+      : branchesError
+        ? buildStateBadge("error", "Ветки: ошибка")
+        : branches.length === 0
+          ? buildStateBadge("warning", "Ветки: пусто")
+          : buildStateBadge("success", `Ветки: ${branches.length}`);
 
-  const selectedBranchBadge =
-    !selectedBranchItem
-      ? buildStateBadge("neutral", "Нет выбранной ветки")
-      : selectedBranchItem.protected
-        ? buildStateBadge("warning", "Защищенная ветка")
-        : buildStateBadge("success", "Готово к деплою");
+  const selectedBranchBadge = !selectedBranchItem
+    ? buildStateBadge("neutral", "Нет выбранной ветки")
+    : selectedBranchItem.protected
+      ? buildStateBadge("warning", "Защищенная ветка")
+      : buildStateBadge("success", "Готово к деплою");
   return (
     <main className="relative min-h-screen bg-black text-white font-mono selection:bg-[#ff4500] selection:text-black">
       <div className="absolute inset-0 z-0 pointer-events-none bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:50px_50px]" />
-      
+
       <section className="relative z-10 mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:py-12">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between border-b border-[#333333] pb-6">
           <div>
-            <p className="text-sm uppercase tracking-[0.4em] text-[#ff4500] font-bold">Протокол Деплоя</p>
-            <h1 className="mt-2 text-2xl font-black uppercase tracking-tight sm:text-3xl md:text-4xl font-sans">GitHub -&gt; Vercel / Netlify / Cloudflare</h1>
+            <p className="text-sm uppercase tracking-[0.4em] text-[#ff4500] font-bold">
+              Протокол Деплоя
+            </p>
+            <h1 className="mt-2 text-2xl font-black uppercase tracking-tight sm:text-3xl md:text-4xl font-sans">
+              GitHub -&gt; Vercel / Netlify / Cloudflare
+            </h1>
             <p className="mt-2 max-w-2xl text-sm text-gray-400 sm:text-base">
-              Выберите репозиторий и ветку, проверьте статус и откройте окно провайдера с заполненными параметрами.
+              Выберите репозиторий и ветку, проверьте статус и откройте окно
+              провайдера с заполненными параметрами.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <StatusBadge {...repoStateBadge} />
               <StatusBadge {...branchStateBadge} />
-              <StatusBadge {...selectedBranchBadge} className={selectedBranchItem?.protected ? "animate-pulse border-red-500 text-red-500" : ""} />
+              <StatusBadge
+                {...selectedBranchBadge}
+                className={
+                  selectedBranchItem?.protected
+                    ? "animate-pulse border-red-500 text-red-500"
+                    : ""
+                }
+              />
             </div>
           </div>
           <Link
@@ -583,11 +718,17 @@ export function DeployDashboard() {
               <IconRepo className="size-4" />
               Выбор репозитория
             </CardTitle>
-            <StatusBadge tone={deployDisabled ? "warning" : "success"} label={deployDisabled ? "Блокировка" : "Готово"} />
+            <StatusBadge
+              tone={deployDisabled ? "warning" : "success"}
+              label={deployDisabled ? "Блокировка" : "Готово"}
+            />
           </CardHeader>
           <CardContent className="pt-6">
             <div className="space-y-3 mb-6">
-              <label htmlFor="repo-search" className="text-sm font-bold uppercase tracking-widest">
+              <label
+                htmlFor="repo-search"
+                className="text-sm font-bold uppercase tracking-widest"
+              >
                 Поиск репозитория
               </label>
               <div className="relative">
@@ -604,7 +745,10 @@ export function DeployDashboard() {
 
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
-                <label htmlFor="repo-select" className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]">
+                <label
+                  htmlFor="repo-select"
+                  className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]"
+                >
                   <IconGithub className="size-4" />
                   Репозиторий
                 </label>
@@ -621,7 +765,9 @@ export function DeployDashboard() {
                   className="h-12 w-full rounded-none border border-[#333333] bg-black px-3 text-sm text-white outline-none transition focus:border-[#ff4500] focus:ring-1 focus:ring-[#ff4500]"
                   disabled={reposLoading || filteredRepos.length === 0}
                 >
-                  {filteredRepos.length === 0 ? <option value="">Нет репозиториев</option> : null}
+                  {filteredRepos.length === 0 ? (
+                    <option value="">Нет репозиториев</option>
+                  ) : null}
                   {filteredRepos.map((repo) => (
                     <option key={repo.id} value={String(repo.id)}>
                       {repo.fullName}
@@ -631,7 +777,10 @@ export function DeployDashboard() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="branch-select" className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]">
+                <label
+                  htmlFor="branch-select"
+                  className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]"
+                >
                   <IconBranch className="size-4" />
                   Ветка
                 </label>
@@ -642,7 +791,9 @@ export function DeployDashboard() {
                   className="h-12 w-full rounded-none border border-[#333333] bg-black px-3 text-sm text-white outline-none transition focus:border-[#ff4500] focus:ring-1 focus:ring-[#ff4500]"
                   disabled={branchesLoading || branches.length === 0}
                 >
-                  {branches.length === 0 ? <option value="">Нет веток</option> : null}
+                  {branches.length === 0 ? (
+                    <option value="">Нет веток</option>
+                  ) : null}
                   {branches.map((branch) => (
                     <option key={branch.name} value={branch.name}>
                       {branch.name}
@@ -652,21 +803,40 @@ export function DeployDashboard() {
               </div>
             </div>
 
-            {reposLoading ? <p className="text-sm text-gray-400 font-mono mt-4">Загрузка репозиториев...</p> : null}
-            {!reposLoading && repos.length === 0 && !reposError ? (
-              <p className="mt-4 border border-[#333333] p-4 text-sm text-gray-400 font-mono">
-                Репозитории не найдены. Убедитесь, что ваше OAuth приложение имеет scope [repo].
+            {reposLoading ? (
+              <p className="text-sm text-gray-400 font-mono mt-4">
+                Загрузка репозиториев...
               </p>
             ) : null}
-            {reposError ? <p className="mt-4 border border-red-900 bg-black text-red-500 p-4 text-sm font-mono font-bold">{reposError}</p> : null}
+            {!reposLoading && repos.length === 0 && !reposError ? (
+              <p className="mt-4 border border-[#333333] p-4 text-sm text-gray-400 font-mono">
+                Репозитории не найдены. Убедитесь, что ваше OAuth приложение
+                имеет scope [repo].
+              </p>
+            ) : null}
+            {reposError ? (
+              <p className="mt-4 border border-red-900 bg-black text-red-500 p-4 text-sm font-mono font-bold">
+                {reposError}
+              </p>
+            ) : null}
             {branchesError ? (
-              <p className="mt-4 border border-red-900 bg-black text-red-500 p-4 text-sm font-mono font-bold">{branchesError}</p>
+              <p className="mt-4 border border-red-900 bg-black text-red-500 p-4 text-sm font-mono font-bold">
+                {branchesError}
+              </p>
             ) : null}
 
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               {reposHasNextPage ? (
-                <Button type="button" className="w-full sm:w-auto" variant="outline" disabled={reposLoading} onClick={() => setRepoPage((current) => current + 1)}>
-                  {reposLoading ? "Загрузка..." : "Загрузить больше репозиториев"}
+                <Button
+                  type="button"
+                  className="w-full sm:w-auto"
+                  variant="outline"
+                  disabled={reposLoading}
+                  onClick={() => setRepoPage((current) => current + 1)}
+                >
+                  {reposLoading
+                    ? "Загрузка..."
+                    : "Загрузить больше репозиториев"}
                 </Button>
               ) : null}
               {selectedRepo && branchesHasNextPage ? (
@@ -683,11 +853,17 @@ export function DeployDashboard() {
             </div>
 
             <Accordion>
-              <AccordionTrigger className="inline-flex items-center gap-2 uppercase tracking-widest font-bold"><IconSettings className="size-4 text-[#ff4500]" />Дополнительные настройки (Опционально)</AccordionTrigger>
+              <AccordionTrigger className="inline-flex items-center gap-2 uppercase tracking-widest font-bold">
+                <IconSettings className="size-4 text-[#ff4500]" />
+                Дополнительные настройки (Опционально)
+              </AccordionTrigger>
               <AccordionContent>
                 <div className="grid gap-4 lg:grid-cols-3 pt-4">
                   <div className="space-y-2">
-                    <label htmlFor="root-directory" className="text-sm font-bold uppercase tracking-widest">
+                    <label
+                      htmlFor="root-directory"
+                      className="text-sm font-bold uppercase tracking-widest"
+                    >
                       Корневая директория (Root)
                     </label>
                     <Input
@@ -700,7 +876,10 @@ export function DeployDashboard() {
                   </div>
 
                   <div className="space-y-2">
-                    <label htmlFor="build-command" className="text-sm font-bold uppercase tracking-widest">
+                    <label
+                      htmlFor="build-command"
+                      className="text-sm font-bold uppercase tracking-widest"
+                    >
                       Команда сборки (Build)
                     </label>
                     <Input
@@ -713,38 +892,52 @@ export function DeployDashboard() {
                   </div>
 
                   <div className="space-y-2">
-                    <label htmlFor="output-directory" className="text-sm font-bold uppercase tracking-widest">
+                    <label
+                      htmlFor="output-directory"
+                      className="text-sm font-bold uppercase tracking-widest"
+                    >
                       Директория вывода (Output)
                     </label>
                     <Input
                       id="output-directory"
                       placeholder=".next"
                       value={outputDirectory}
-                      onChange={(event) => setOutputDirectory(event.target.value)}
+                      onChange={(event) =>
+                        setOutputDirectory(event.target.value)
+                      }
                       className="rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2 mt-4">
-                  <label htmlFor="env-vars" className="text-sm font-bold uppercase tracking-widest">
+                  <label
+                    htmlFor="env-vars"
+                    className="text-sm font-bold uppercase tracking-widest"
+                  >
                     Переменные окружения (KEY=VALUE, по одной на строку)
                   </label>
                   <Textarea
                     id="env-vars"
                     value={envText}
                     onChange={(event) => setEnvText(event.target.value)}
-                    placeholder={"API_URL=https://api.example.com\nNODE_ENV=production"}
+                    placeholder={
+                      "API_URL=https://api.example.com\nNODE_ENV=production"
+                    }
                     className="rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500] min-h-[100px]"
                   />
                   <p className="text-xs text-gray-400 font-mono">
-                    Vercel: передаются только имена ключей. Netlify: ключи и значения в URL hash. Cloudflare: не передаются переменные окружения, только URL репозитория.
+                    Vercel: передаются только имена ключей. Netlify: ключи и
+                    значения в URL hash. Cloudflare: не передаются переменные
+                    окружения, только URL репозитория.
                   </p>
                 </div>
 
                 <div className="mt-6 border border-[#333333] bg-black p-4 brutalist-shadow">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500]">Автоматические рекомендации</p>
+                    <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500]">
+                      Автоматические рекомендации
+                    </p>
                     <Button
                       type="button"
                       className="w-full sm:w-auto"
@@ -752,23 +945,35 @@ export function DeployDashboard() {
                       disabled={recommendationLoading || !selectedRepo}
                       onClick={handleAutoRecommendConfig}
                     >
-                      {recommendationLoading ? "Детектирование..." : "Распознать конфигурацию репозитория"}
+                      {recommendationLoading
+                        ? "Детектирование..."
+                        : "Распознать конфигурацию репозитория"}
                     </Button>
                   </div>
                   <p className="mt-2 text-xs text-gray-400 font-mono">
-                    Распознанный фреймворк: <span className="text-white bg-[#333333] px-1">{repoRecommendationFramework}</span>
+                    Распознанный фреймворк:{" "}
+                    <span className="text-white bg-[#333333] px-1">
+                      {repoRecommendationFramework}
+                    </span>
                   </p>
                   {repoRecommendationNotes.length > 0 ? (
                     <ul className="mt-2 list-none space-y-1 text-xs text-gray-300 font-mono">
                       {repoRecommendationNotes.map((note) => (
-                        <li key={note} className="before:content-['>_'] before:mr-2 before:text-[#ff4500]">{note}</li>
+                        <li
+                          key={note}
+                          className="before:content-['>_'] before:mr-2 before:text-[#ff4500]"
+                        >
+                          {note}
+                        </li>
                       ))}
                     </ul>
                   ) : null}
                 </div>
 
                 <div className="mt-6 border border-[#333333] p-4 brutalist-shadow">
-                  <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500] mb-4">Сохранение Шаблонов</p>
+                  <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500] mb-4">
+                    Сохранение Шаблонов
+                  </p>
                   <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap">
                     <Input
                       placeholder="Имя шаблона (напр. Next.js Default)"
@@ -776,31 +981,61 @@ export function DeployDashboard() {
                       onChange={(event) => setPresetName(event.target.value)}
                       className="w-full sm:max-w-xs rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
                     />
-                    <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleSavePreset}>
+                    <Button
+                      type="button"
+                      className="w-full sm:w-auto"
+                      variant="outline"
+                      onClick={handleSavePreset}
+                    >
                       Сохранить шаблон
                     </Button>
-                    <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={handleClearPreset}>
+                    <Button
+                      type="button"
+                      className="w-full sm:w-auto"
+                      variant="outline"
+                      onClick={handleClearPreset}
+                    >
                       Очистить все
                     </Button>
                   </div>
 
                   <div className="space-y-4 mt-6">
-                    <p className="text-sm font-bold uppercase tracking-widest">Сохраненные шаблоны</p>
+                    <p className="text-sm font-bold uppercase tracking-widest">
+                      Сохраненные шаблоны
+                    </p>
                     {presetItems.length === 0 ? (
-                      <p className="text-xs text-gray-500 font-mono">Нет сохраненных шаблонов.</p>
+                      <p className="text-xs text-gray-500 font-mono">
+                        Нет сохраненных шаблонов.
+                      </p>
                     ) : (
                       <div className="space-y-2">
                         {presetItems.map((item) => (
-                          <div key={item.id} className="flex flex-col gap-2 border border-[#333333] bg-black p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div
+                            key={item.id}
+                            className="flex flex-col gap-2 border border-[#333333] bg-black p-3 sm:flex-row sm:items-center sm:justify-between"
+                          >
                             <div>
                               <p className="text-sm font-bold">{item.name}</p>
-                              <p className="text-xs text-gray-500 font-mono">Обновлен: {new Date(item.updatedAt).toLocaleString()}</p>
+                              <p className="text-xs text-gray-500 font-mono">
+                                Обновлен:{" "}
+                                {new Date(item.updatedAt).toLocaleString()}
+                              </p>
                             </div>
                             <div className="flex gap-2">
-                              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => handleLoadPreset(item)}>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full sm:w-auto"
+                                onClick={() => handleLoadPreset(item)}
+                              >
                                 Загрузить
                               </Button>
-                              <Button type="button" variant="outline" className="w-full sm:w-auto border-red-900 border text-red-500 hover:bg-black hover:text-red-500 hover:border-red-500" onClick={() => handleDeletePreset(item.id)}>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full sm:w-auto border-red-900 border text-red-500 hover:bg-black hover:text-red-500 hover:border-red-500"
+                                onClick={() => handleDeletePreset(item.id)}
+                              >
                                 Удалить
                               </Button>
                             </div>
@@ -833,15 +1068,24 @@ export function DeployDashboard() {
               <IconRocket className="size-4" />
               Деплой Системы
             </CardTitle>
-            <StatusBadge tone={deployDisabled ? "warning" : "success"} label={deployDisabled ? "Выберите ветку" : "Системы готовы"} />
+            <StatusBadge
+              tone={deployDisabled ? "warning" : "success"}
+              label={deployDisabled ? "Выберите ветку" : "Системы готовы"}
+            />
           </CardHeader>
           <CardContent className="pt-6">
             <div className="grid gap-3 border border-[#333333] bg-[#0a0a0a] p-4 text-sm text-gray-300 font-mono sm:grid-cols-2 brutalist-shadow">
               <p className="break-all">
-                <span className="text-[#ff4500] font-bold">URL Репозитория:</span> {selectedRepo?.htmlUrl ?? "НЕ ВЫБРАНО"}
+                <span className="text-[#ff4500] font-bold">
+                  URL Репозитория:
+                </span>{" "}
+                {selectedRepo?.htmlUrl ?? "НЕ ВЫБРАНО"}
               </p>
               <p>
-                <span className="text-[#ff4500] font-bold">Ветка (Branch):</span> {selectedBranch || "НЕ ВЫБРАНО"}
+                <span className="text-[#ff4500] font-bold">
+                  Ветка (Branch):
+                </span>{" "}
+                {selectedBranch || "НЕ ВЫБРАНО"}
               </p>
             </div>
 
@@ -919,20 +1163,39 @@ export function DeployDashboard() {
             </div>
 
             <div className="mt-8 grid gap-2 border border-[#333333] bg-black p-4 text-xs text-gray-400 md:grid-cols-3 brutalist-shadow">
-              <p>Vercel: ветка не передается, Deploy Button не поддерживает параметр ветки.</p>
-              <p>Netlify: ветка через `branch`, root через `base`. Railway: env передается в URL.</p>
-              <p>Cloudflare: Workers Deploy Button (URL). Render: требуется render.yaml в репо.</p>
+              <p>
+                Vercel: ветка не передается, Deploy Button не поддерживает
+                параметр ветки.
+              </p>
+              <p>
+                Netlify: ветка через `branch`, root через `base`. Railway: env
+                передается в URL.
+              </p>
+              <p>
+                Cloudflare: Workers Deploy Button (URL). Render: требуется
+                render.yaml в репо.
+              </p>
             </div>
 
             <div className="mt-6 overflow-x-auto border border-[#333333] bg-black p-4 brutalist-shadow">
-              <p className="mb-4 text-xs font-bold uppercase tracking-widest text-[#ff4500]">Матрица возможностей провайдеров</p>
+              <p className="mb-4 text-xs font-bold uppercase tracking-widest text-[#ff4500]">
+                Матрица возможностей провайдеров
+              </p>
               <table className="min-w-full text-left text-xs text-white font-mono">
                 <thead>
                   <tr className="text-gray-500 border-b border-[#333333]">
-                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Провайдер</th>
-                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Поддержка веток</th>
-                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Переопределение сборки</th>
-                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">Env</th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">
+                      Провайдер
+                    </th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">
+                      Поддержка веток
+                    </th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">
+                      Переопределение сборки
+                    </th>
+                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">
+                      Env
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -955,13 +1218,17 @@ export function DeployDashboard() {
                     <td className="py-3 pr-4">Только URL</td>
                   </tr>
                   <tr className="border-b border-[#333333]/50">
-                    <td className="py-3 pr-4 font-bold text-[#00ccff]">Railway</td>
+                    <td className="py-3 pr-4 font-bold text-[#00ccff]">
+                      Railway
+                    </td>
                     <td className="py-3 pr-4 text-red-400">Нет</td>
                     <td className="py-3 pr-4 text-yellow-400">Root dir</td>
                     <td className="py-3 pr-4 text-green-400">Ключ/Значение</td>
                   </tr>
                   <tr>
-                    <td className="py-3 pr-4 font-bold text-[#ffcc00]">Render</td>
+                    <td className="py-3 pr-4 font-bold text-[#ffcc00]">
+                      Render
+                    </td>
                     <td className="py-3 pr-4 text-red-400">Нет</td>
                     <td className="py-3 pr-4 text-red-400">render.yaml</td>
                     <td className="py-3 pr-4">render.yaml</td>
@@ -970,29 +1237,183 @@ export function DeployDashboard() {
               </table>
             </div>
 
+            {/* === DEPLOY STATUS PANEL === */}
+            {(deployStatuses.length > 0 || statusPolling) ? (
+              <div className="mt-8 border border-[#333333] bg-[#0a0a0a] p-6 brutalist-shadow">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#333333] pb-4">
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500]">
+                      ■ Статус Деплоя
+                    </p>
+                    {statusPolling ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-mono text-green-400">
+                        <span className="inline-block size-2 rounded-full bg-green-400 animate-pulse" />
+                        LIVE · {DEPLOY_POLL_INTERVAL_MS / 1000}s
+                      </span>
+                    ) : (
+                      <span className="text-xs font-mono text-gray-600">ОСТАНОВЛЕН</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="text-xs"
+                      onClick={() => fetchDeployStatuses()}
+                    >
+                      Обновить
+                    </Button>
+                    {statusPolling ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="text-xs border-red-900 text-red-500 hover:bg-black hover:text-red-500 hover:border-red-500"
+                        onClick={stopPolling}
+                      >
+                        Стоп
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={startPolling}
+                        disabled={!selectedRepo}
+                      >
+                        Возобновить
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {statusError ? (
+                  <p className="mt-4 text-xs font-mono text-red-500 border border-red-900 p-3">{statusError}</p>
+                ) : null}
+
+                {deployStatuses.length === 0 && statusPolling ? (
+                  <p className="mt-6 text-xs font-mono text-gray-500">
+                    {">"} Ожидание данных от GitHub Deployments API...
+                  </p>
+                ) : null}
+
+                <div className="mt-4 space-y-3">
+                  {deployStatuses.map((d) => {
+                    const stateConfig = {
+                      pending: { label: "В ОЧЕРЕДИ", color: "text-yellow-400", bar: "bg-yellow-400", width: "w-1/6" },
+                      building: { label: "СБОРКА", color: "text-[#ff4500]", bar: "bg-[#ff4500]", width: "w-3/5" },
+                      ready: { label: "ГОТОВО", color: "text-green-400", bar: "bg-green-400", width: "w-full" },
+                      error: { label: "ОШИБКА", color: "text-red-500", bar: "bg-red-500", width: "w-full" },
+                      inactive: { label: "НЕАКТИВЕН", color: "text-gray-500", bar: "bg-gray-500", width: "w-full" },
+                    }[d.state] ?? { label: d.state.toUpperCase(), color: "text-gray-400", bar: "bg-gray-400", width: "w-1/4" };
+
+                    return (
+                      <div key={d.id} className="border border-[#333333] bg-black p-4 font-mono text-xs transition-colors hover:border-[#555]">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[#ff4500]">{">"}</span>
+                            <span className="text-white font-bold">{d.environment}</span>
+                            <span className="text-gray-500">·</span>
+                            <span className="text-gray-400">{d.ref}</span>
+                            {d.creator ? (
+                              <>
+                                <span className="text-gray-500">·</span>
+                                <span className="text-gray-500">@{d.creator}</span>
+                              </>
+                            ) : null}
+                          </div>
+                          <span className={`font-bold uppercase tracking-widest ${stateConfig.color}`}>
+                            {stateConfig.label}
+                          </span>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="mt-3 h-2 w-full bg-[#222]">
+                          <div
+                            className={`h-full ${stateConfig.bar} ${stateConfig.width} transition-all duration-500 ${
+                              d.state === "building" ? "animate-pulse" : ""
+                            }`}
+                          />
+                        </div>
+
+                        <div className="mt-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 text-gray-500">
+                          <span>{new Date(d.createdAt).toLocaleString()}</span>
+                          {d.description ? (
+                            <>
+                              <span className="hidden sm:inline text-[#333]">|</span>
+                              <span className="text-gray-400 truncate max-w-xs">{d.description}</span>
+                            </>
+                          ) : null}
+                        </div>
+
+                        {(d.environmentUrl || d.targetUrl || d.logUrl) ? (
+                          <div className="mt-2 flex flex-wrap gap-3">
+                            {d.environmentUrl ? (
+                              <a href={d.environmentUrl} target="_blank" rel="noreferrer" className="text-[#ff4500] hover:underline">
+                                → Открыть сайт
+                              </a>
+                            ) : null}
+                            {d.targetUrl ? (
+                              <a href={d.targetUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white hover:underline">
+                                → Детали
+                              </a>
+                            ) : null}
+                            {d.logUrl ? (
+                              <a href={d.logUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white hover:underline">
+                                → Логи
+                              </a>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-8">
-              <Button variant="outline" className="w-full sm:w-auto" onClick={handleRefreshRepositories}>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={handleRefreshRepositories}
+              >
                 Обновить репозитории
               </Button>
             </div>
 
             <div className="mt-8 border border-[#333333] bg-[#0a0a0a] p-6 brutalist-shadow">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-[#333333] pb-4">
-                <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500]">История деплоев</p>
-                <Button type="button" variant="outline" className="w-full sm:w-auto border-red-900 border text-red-500 hover:bg-black hover:text-red-500 hover:border-red-500" onClick={handleClearHistory}>
+                <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500]">
+                  История деплоев
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full sm:w-auto border-red-900 border text-red-500 hover:bg-black hover:text-red-500 hover:border-red-500"
+                  onClick={handleClearHistory}
+                >
                   Очистить историю
                 </Button>
               </div>
 
               {historyItems.length === 0 ? (
-                <p className="mt-6 text-xs text-gray-500 font-mono">История пуста. Запустите провайдера для создания первой записи.</p>
+                <p className="mt-6 text-xs text-gray-500 font-mono">
+                  История пуста. Запустите провайдера для создания первой
+                  записи.
+                </p>
               ) : (
                 <div className="mt-6 space-y-4">
                   {historyItems.map((entry) => (
-                    <div key={entry.id} className="flex flex-col gap-4 border border-[#333333] bg-black p-4 lg:flex-row lg:items-center lg:justify-between transition-colors hover:border-white">
+                    <div
+                      key={entry.id}
+                      className="flex flex-col gap-4 border border-[#333333] bg-black p-4 lg:flex-row lg:items-center lg:justify-between transition-colors hover:border-white"
+                    >
                       <div className="space-y-2">
                         <p className="text-sm font-bold text-white uppercase tracking-widest">
-                          {entry.repoFullName} <span className="text-[#ff4500] ml-2">[{entry.provider}]</span>
+                          {entry.repoFullName}{" "}
+                          <span className="text-[#ff4500] ml-2">
+                            [{entry.provider}]
+                          </span>
                         </p>
                         <p className="text-xs text-gray-400 font-mono flex gap-3">
                           <span>Ветка: {entry.branch || "-"}</span>
@@ -1002,11 +1423,20 @@ export function DeployDashboard() {
                           <span>Build: {entry.buildCommand || "-"}</span>
                         </p>
                         <p className="text-xs text-gray-600 font-mono">
-                          {new Date(entry.createdAt).toLocaleString()} · Ключи Env: {entry.envKeys.length > 0 ? entry.envKeys.join(", ") : "нет"}
+                          {new Date(entry.createdAt).toLocaleString()} · Ключи
+                          Env:{" "}
+                          {entry.envKeys.length > 0
+                            ? entry.envKeys.join(", ")
+                            : "нет"}
                         </p>
                       </div>
                       <div className="flex flex-col gap-3 sm:flex-row">
-                        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => handleApplyHistoryEntry(entry)}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full sm:w-auto"
+                          onClick={() => handleApplyHistoryEntry(entry)}
+                        >
                           Загрузить конфиг
                         </Button>
                         <a
