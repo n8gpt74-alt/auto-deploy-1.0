@@ -46,6 +46,10 @@ import {
   IconSearch,
   IconSettings,
 } from "@/components/ui/icons";
+import { toast } from "@/components/ui/toast";
+import { SkeletonList } from "@/components/ui/skeleton";
+import { DeployConfirmModal } from "@/components/ui/deploy-confirm-modal";
+import { parseEnvText } from "@/lib/deploy-links";
 
 type RepoItem = {
   id: number;
@@ -78,10 +82,7 @@ type BranchesApiResponse = {
   hasNextPage?: boolean;
 };
 
-type PresetNotice = {
-  tone: "success" | "error";
-  message: string;
-};
+
 
 type RepoConfigResponse = {
   framework?: string;
@@ -112,6 +113,15 @@ const REPO_PAGE_SIZE = 30;
 const BRANCH_PAGE_SIZE = 100;
 const DEPLOY_POLL_INTERVAL_MS = 5000;
 const DEPLOY_POLL_MAX_DURATION_MS = 5 * 60 * 1000;
+
+type CommitItem = {
+  sha: string;
+  fullSha: string;
+  message: string;
+  author: string;
+  date: string;
+  url: string;
+};
 
 function formatRateLimitError(error: ApiError): string {
   if (error.resetAt) {
@@ -153,7 +163,7 @@ export function DeployDashboard() {
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [reposError, setReposError] = useState<string | null>(null);
   const [branchesError, setBranchesError] = useState<string | null>(null);
-  const [presetNotice, setPresetNotice] = useState<PresetNotice | null>(null);
+  
   const [repoPage, setRepoPage] = useState(1);
   const [reposHasNextPage, setReposHasNextPage] = useState(false);
   const [branchesPage, setBranchesPage] = useState(1);
@@ -166,6 +176,17 @@ export function DeployDashboard() {
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
 
+  const [commits, setCommits] = useState<CommitItem[]>([]);
+  const [commitsLoading, setCommitsLoading] = useState(false);
+
+  const [confirmModal, setConfirmModal] = useState<{ open: boolean; provider: DeployProvider; deployUrl: string }>({
+    open: false,
+    provider: "vercel",
+    deployUrl: "#",
+  });
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   function applyDeployFields(fields: DeployPresetFields) {
     setRootDirectory(fields.rootDirectory);
     setBuildCommand(fields.buildCommand);
@@ -176,7 +197,7 @@ export function DeployDashboard() {
   function readPresetItemsIntoState() {
     const result = loadDeployPresetItems();
     if (!result.ok) {
-      setPresetNotice({ tone: "error", message: result.error });
+      toast("error", result.error);
       return;
     }
 
@@ -186,7 +207,7 @@ export function DeployDashboard() {
   function readHistoryIntoState() {
     const result = loadDeployHistory();
     if (!result.ok) {
-      setPresetNotice({ tone: "error", message: result.error });
+      toast("error", result.error);
       return;
     }
 
@@ -196,7 +217,7 @@ export function DeployDashboard() {
   useEffect(() => {
     const migrateResult = migratePresetStorageToV2();
     if (!migrateResult.ok) {
-      setPresetNotice({ tone: "error", message: migrateResult.error });
+      toast("error", migrateResult.error);
       return;
     }
 
@@ -349,7 +370,50 @@ export function DeployDashboard() {
   useEffect(() => {
     setRepoRecommendationFramework("unknown");
     setRepoRecommendationNotes([]);
+    setCommits([]);
   }, [selectedRepoId]);
+
+  // Load commits when branch changes
+  useEffect(() => {
+    if (!selectedRepo || !selectedBranch) {
+      setCommits([]);
+      return;
+    }
+
+    let cancelled = false;
+    setCommitsLoading(true);
+
+    async function loadCommits() {
+      try {
+        const res = await fetch(
+          `/api/github/commits?owner=${encodeURIComponent(selectedRepo!.owner)}&repo=${encodeURIComponent(selectedRepo!.name)}&branch=${encodeURIComponent(selectedBranch)}`,
+        );
+        if (!res.ok || cancelled) return;
+        const json = (await res.json()) as { commits?: CommitItem[] };
+        if (!cancelled) setCommits(json.commits ?? []);
+      } catch {
+        // silently fail
+      } finally {
+        if (!cancelled) setCommitsLoading(false);
+      }
+    }
+
+    loadCommits();
+    return () => { cancelled = true; };
+  }, [selectedRepo, selectedBranch]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Ctrl+K → focus search
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const deployConfig: DeployPresetFields = {
     rootDirectory,
@@ -361,7 +425,7 @@ export function DeployDashboard() {
   function handleSavePreset() {
     const result = saveNamedDeployPreset(presetName, deployConfig);
     if (!result.ok) {
-      setPresetNotice({ tone: "error", message: result.error });
+      toast("error", result.error);
       return;
     }
 
@@ -384,22 +448,22 @@ export function DeployDashboard() {
   function handleDeletePreset(id: string) {
     const result = deleteDeployPresetItem(id);
     if (!result.ok) {
-      setPresetNotice({ tone: "error", message: result.error });
+      toast("error", result.error);
       return;
     }
 
     readPresetItemsIntoState();
-    setPresetNotice({ tone: "success", message: "Template removed." });
+    toast("success", "Template removed.");
   }
 
   function handleClearPreset() {
     const result = clearDeployPreset();
     if (!result.ok) {
-      setPresetNotice({ tone: "error", message: result.error });
+      toast("error", result.error);
       return;
     }
 
-    setPresetNotice({ tone: "success", message: "Saved preset removed." });
+    toast("success", "Saved preset removed.");
   }
 
   function handleRefreshRepositories() {
@@ -416,7 +480,7 @@ export function DeployDashboard() {
 
   async function handleAutoRecommendConfig() {
     if (!selectedRepo) {
-      setPresetNotice({ tone: "error", message: "Select a repository first." });
+      toast("error", "Select a repository first.");
       return;
     }
 
@@ -431,7 +495,7 @@ export function DeployDashboard() {
       const json = (await res.json()) as RepoConfigResponse & ApiError;
 
       if (!res.ok) {
-        setPresetNotice({ tone: "error", message: formatRateLimitError(json) });
+        toast("error", formatRateLimitError(json));
         return;
       }
 
@@ -550,12 +614,22 @@ export function DeployDashboard() {
     };
   }, []);
 
-  function handleRecordDeploy(provider: DeployProvider) {
-    if (!selectedRepo || !selectedBranch) {
-      return;
-    }
-
+  function triggerDeploy(provider: DeployProvider) {
+    if (!selectedRepo || !selectedBranch) return;
     const deployUrl = getDeployUrlByProvider(provider);
+    setConfirmModal({
+      open: true,
+      provider,
+      deployUrl,
+    });
+  }
+
+  function executeDeploy() {
+    const { provider, deployUrl } = confirmModal;
+    setConfirmModal((prev) => ({ ...prev, open: false }));
+
+    if (!selectedRepo || !selectedBranch || !deployUrl) return;
+
     const result = recordDeployHistory({
       provider,
       repoFullName: selectedRepo.fullName,
@@ -566,13 +640,14 @@ export function DeployDashboard() {
     });
 
     if (!result.ok) {
-      setPresetNotice({ tone: "error", message: result.error });
+      toast("error", result.error);
       return;
     }
 
     readHistoryIntoState();
-    // Start polling for deploy status after launching
     startPolling();
+    window.open(deployUrl, "_blank", "noopener,noreferrer");
+    toast("success", `Деплой через ${provider} запущен!`);
   }
 
   function handleApplyHistoryEntry(entry: DeployHistoryEntry) {
@@ -588,12 +663,12 @@ export function DeployDashboard() {
   function handleClearHistory() {
     const result = clearDeployHistory();
     if (!result.ok) {
-      setPresetNotice({ tone: "error", message: result.error });
+      toast("error", result.error);
       return;
     }
 
     readHistoryIntoState();
-    setPresetNotice({ tone: "success", message: "Deploy history cleared." });
+    toast("success", "Deploy history cleared.");
   }
 
   const vercelUrl = selectedRepo
@@ -1046,17 +1121,7 @@ export function DeployDashboard() {
                   </div>
                 </div>
 
-                {presetNotice ? (
-                  <p
-                    className={`mt-4 border p-3 text-xs font-mono font-bold uppercase ${
-                      presetNotice.tone === "success"
-                        ? "border-green-500 bg-black text-green-500"
-                        : "border-red-500 bg-black text-red-500"
-                    }`}
-                  >
-                    {presetNotice.message}
-                  </p>
-                ) : null}
+
               </AccordionContent>
             </Accordion>
           </CardContent>
@@ -1089,12 +1154,42 @@ export function DeployDashboard() {
               </p>
             </div>
 
+            {commitsLoading ? (
+              <div className="mt-6 border border-[#333333] bg-[#0a0a0a] p-4 brutalist-shadow">
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4">
+                  Загрузка коммитов
+                </p>
+                <SkeletonList count={3} />
+              </div>
+            ) : commits.length > 0 ? (
+              <div className="mt-6 border border-[#333333] bg-[#0a0a0a] p-4 brutalist-shadow">
+                <p className="text-xs font-bold uppercase tracking-widest text-[#ff4500] mb-4">
+                  Предпросмотр деплоя (последние коммиты)
+                </p>
+                <div className="space-y-3">
+                  {commits.map((c) => (
+                    <div key={c.sha} className="flex flex-col gap-1 text-sm font-mono border-b border-[#333] pb-2 last:border-0 last:pb-0">
+                      <div className="flex items-center gap-2">
+                        <a href={c.url} target="_blank" rel="noreferrer" className="text-[#ff4500] hover:underline font-bold">
+                          {c.sha}
+                        </a>
+                        <span className="text-gray-400 truncate" title={c.message}>{c.message}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span>@{c.author}</span>
+                        <span>·</span>
+                        <span>{new Date(c.date).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-6 grid gap-4 md:grid-cols-3 lg:grid-cols-5">
-              <a
-                href={vercelUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => handleRecordDeploy("vercel")}
+              <button
+                type="button"
+                onClick={() => triggerDeploy("vercel")}
                 className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
                   deployDisabled
                     ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
@@ -1103,12 +1198,10 @@ export function DeployDashboard() {
               >
                 <IconCloud className="size-5" />
                 Vercel
-              </a>
-              <a
-                href={netlifyUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => handleRecordDeploy("netlify")}
+              </button>
+              <button
+                type="button"
+                onClick={() => triggerDeploy("netlify")}
                 className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
                   deployDisabled
                     ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
@@ -1117,12 +1210,10 @@ export function DeployDashboard() {
               >
                 <IconRocket className="size-5" />
                 Netlify
-              </a>
-              <a
-                href={cloudflareUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => handleRecordDeploy("cloudflare")}
+              </button>
+              <button
+                type="button"
+                onClick={() => triggerDeploy("cloudflare")}
                 className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
                   deployDisabled
                     ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
@@ -1131,12 +1222,10 @@ export function DeployDashboard() {
               >
                 <IconBolt className="size-5" />
                 Cloudflare
-              </a>
-              <a
-                href={railwayUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => handleRecordDeploy("railway")}
+              </button>
+              <button
+                type="button"
+                onClick={() => triggerDeploy("railway")}
                 className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
                   deployDisabled
                     ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
@@ -1145,12 +1234,10 @@ export function DeployDashboard() {
               >
                 <IconRocket className="size-5" />
                 Railway
-              </a>
-              <a
-                href={renderUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => handleRecordDeploy("render")}
+              </button>
+              <button
+                type="button"
+                onClick={() => triggerDeploy("render")}
                 className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
                   deployDisabled
                     ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
@@ -1159,7 +1246,7 @@ export function DeployDashboard() {
               >
                 <IconBolt className="size-5" />
                 Render
-              </a>
+              </button>
             </div>
 
             <div className="mt-8 grid gap-2 border border-[#333333] bg-black p-4 text-xs text-gray-400 md:grid-cols-3 brutalist-shadow">
@@ -1456,6 +1543,18 @@ export function DeployDashboard() {
           </CardContent>
         </Card>
       </section>
+
+      <DeployConfirmModal
+        open={confirmModal.open}
+        onConfirm={executeDeploy}
+        onCancel={() => setConfirmModal((prev) => ({ ...prev, open: false }))}
+        provider={confirmModal.provider}
+        repoName={selectedRepo?.fullName ?? ""}
+        branch={selectedBranch}
+        rootDirectory={rootDirectory}
+        buildCommand={buildCommand}
+        envCount={parseEnvText(envText).length}
+      />
     </main>
   );
 }
