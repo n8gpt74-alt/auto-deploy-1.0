@@ -431,18 +431,12 @@ export function DeployDashboard() {
 
     setPresetName("");
     readPresetItemsIntoState();
-    setPresetNotice({
-      tone: "success",
-      message: `Template \"${result.item.name}\" saved locally.`,
-    });
+    toast("success", `Template \"${result.item.name}\" saved locally.`);
   }
 
   function handleLoadPreset(item: DeployPresetItem) {
     applyDeployFields(item);
-    setPresetNotice({
-      tone: "success",
-      message: `Template \"${item.name}\" loaded.`,
-    });
+    toast("success", `Template \"${item.name}\" loaded.`);
   }
 
   function handleDeletePreset(id: string) {
@@ -520,15 +514,9 @@ export function DeployDashboard() {
 
       setRepoRecommendationFramework(json.framework ?? "unknown");
       setRepoRecommendationNotes(json.notes ?? []);
-      setPresetNotice({
-        tone: "success",
-        message: `Авто-рекомендация применена.${discoveredEnvKeys.length > 0 ? ` Обнаружено ${discoveredEnvKeys.length} переменных из .env.example.` : ""}`,
-      });
+      toast("success", `Авто-рекомендация применена.${discoveredEnvKeys.length > 0 ? ` Обнаружено ${discoveredEnvKeys.length} переменных из .env.example.` : ""}`);
     } catch {
-      setPresetNotice({
-        tone: "error",
-        message: "Failed to auto-detect repository configuration.",
-      });
+      toast("error", "Failed to auto-detect repository configuration.");
     } finally {
       setRecommendationLoading(false);
     }
