@@ -185,6 +185,19 @@ export function DeployDashboard() {
     deployUrl: "#",
   });
 
+  const [orgs, setOrgs] = useState<{ id: number; login: string; avatarUrl: string }[]>([]);
+  const [selectedOrg, setSelectedOrg] = useState<string>("");
+  const [orgsLoading, setOrgsLoading] = useState(false);
+
+  const [readmeContent, setReadmeContent] = useState<string | null>(null);
+  const [readmeLoading, setReadmeLoading] = useState(false);
+
+  const [branchDiff, setBranchDiff] = useState<{ aheadBy: number; behindBy: number; status: string; totalCommits: number } | null>(null);
+  const [branchDiffLoading, setBranchDiffLoading] = useState(false);
+
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyFilterProvider, setHistoryFilterProvider] = useState<string>("all");
+
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [openLogsId, setOpenLogsId] = useState<number | null>(null);
@@ -277,6 +290,24 @@ export function DeployDashboard() {
   }, []);
 
   useEffect(() => {
+    async function fetchOrgs() {
+      setOrgsLoading(true);
+      try {
+        const res = await fetch("/api/github/orgs");
+        const json = await res.json();
+        if (json.orgs) {
+          setOrgs(json.orgs);
+        }
+      } catch (err) {
+        console.error("Failed to fetch orgs", err);
+      } finally {
+        setOrgsLoading(false);
+      }
+    }
+    fetchOrgs();
+  }, []);
+
+  useEffect(() => {
     async function loadRepos() {
       setReposLoading(true);
       setReposError(null);
@@ -285,6 +316,9 @@ export function DeployDashboard() {
         page: String(repoPage),
         perPage: String(REPO_PAGE_SIZE),
       });
+      if (selectedOrg) {
+        params.append("org", selectedOrg);
+      }
       const res = await fetch(`/api/github/repos?${params.toString()}`);
       const json = (await res.json()) as ReposApiResponse & ApiError;
 
@@ -336,7 +370,49 @@ export function DeployDashboard() {
       setReposError("Failed to fetch repositories");
       setReposLoading(false);
     });
-  }, [repoPage, reposRefreshNonce]);
+  }, [repoPage, reposRefreshNonce, selectedOrg]);
+
+  useEffect(() => {
+    async function loadReadme() {
+      if (!selectedRepo) {
+        setReadmeContent(null);
+        return;
+      }
+      setReadmeLoading(true);
+      try {
+        const res = await fetch(`/api/github/readme?owner=${selectedRepo.owner}&repo=${selectedRepo.name}`);
+        const json = await res.json();
+        setReadmeContent(json.content || "Empty README");
+      } catch {
+        setReadmeContent("Error loading README");
+      } finally {
+        setReadmeLoading(false);
+      }
+    }
+    loadReadme();
+  }, [selectedRepoId]);
+
+  useEffect(() => {
+    async function loadBranchDiff() {
+      if (!selectedRepo || !selectedBranch || selectedBranch === selectedRepo.defaultBranch) {
+        setBranchDiff(null);
+        return;
+      }
+      setBranchDiffLoading(true);
+      try {
+        const res = await fetch(`/api/github/diff?owner=${selectedRepo.owner}&repo=${selectedRepo.name}&base=${selectedRepo.defaultBranch}&head=${selectedBranch}`);
+        const json = await res.json();
+        if (json.totalCommits !== undefined) {
+          setBranchDiff(json);
+        }
+      } catch {
+        setBranchDiff(null);
+      } finally {
+        setBranchDiffLoading(false);
+      }
+    }
+    loadBranchDiff();
+  }, [selectedRepoId, selectedBranch]);
 
   const filteredRepos = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -353,6 +429,18 @@ export function DeployDashboard() {
     () => branches.find((branch) => branch.name === selectedBranch) ?? null,
     [branches, selectedBranch],
   );
+
+  const filteredHistoryItems = useMemo(() => {
+    let items = historyItems;
+    if (historySearch) {
+      const q = historySearch.toLowerCase();
+      items = items.filter((item) => item.repoFullName.toLowerCase().includes(q));
+    }
+    if (historyFilterProvider !== "all") {
+      items = items.filter((item) => item.provider === historyFilterProvider);
+    }
+    return items;
+  }, [historyItems, historySearch, historyFilterProvider]);
 
   useEffect(() => {
     if (!selectedRepo) {
@@ -831,972 +919,458 @@ export function DeployDashboard() {
       ? buildStateBadge("warning", "Защищенная ветка")
       : buildStateBadge("success", "Готово к деплою");
   return (
-    <main className="relative min-h-screen bg-black text-white font-mono selection:bg-[#ff4500] selection:text-black">
-      <div className="absolute inset-0 z-0 pointer-events-none bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:50px_50px]" />
-
-      <section className="relative z-10 mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:py-12">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between border-b border-[#333333] pb-6">
-          <div>
-            <p className="text-sm uppercase tracking-[0.4em] text-[#ff4500] font-bold">
-              Протокол Деплоя
-            </p>
-            <h1 className="mt-2 text-2xl font-black uppercase tracking-tight sm:text-3xl md:text-4xl font-sans">
-              GitHub -&gt; Vercel / Netlify / Cloudflare
+    <main className="relative min-h-screen bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
+      <div className="canvas-container bg-[radial-gradient(circle_at_50%_50%,rgba(255,69,0,0.05),transparent_70%)] opacity-50" />
+      
+      <section className="relative z-10 mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:py-16 animate-reveal">
+        <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between border-b border-border/50 pb-10">
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+              </span>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
+                System Online: PROTOCOL v2.0
+              </p>
+            </div>
+            <h1 className="text-4xl font-black uppercase tracking-tighter sm:text-5xl md:text-6xl font-sans leading-[0.95]">
+              Deploy <span className="text-primary italic">One</span> Click
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-gray-400 sm:text-base">
-              Выберите репозиторий и ветку, проверьте статус и откройте окно
-              провайдера с заполненными параметрами.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <StatusBadge {...repoStateBadge} />
-              <StatusBadge {...branchStateBadge} />
-              <StatusBadge
-                {...selectedBranchBadge}
-                className={
-                  selectedBranchItem?.protected
-                    ? "animate-pulse border-red-500 text-red-500"
-                    : ""
-                }
-              />
+            <div className="flex flex-wrap items-center gap-4 pt-2">
+              <div className="flex items-center gap-2 border border-border bg-card/40 px-3 py-2 rounded-lg text-sm">
+                <IconGithub className="size-4 text-primary" />
+                <select 
+                  className="bg-transparent text-sm font-bold uppercase tracking-widest outline-none cursor-pointer"
+                  value={selectedOrg}
+                  onChange={(e) => {
+                    setSelectedOrg(e.target.value);
+                    setRepoPage(1);
+                    setRepos([]);
+                  }}
+                >
+                  <option value="" className="bg-background">Personal Projects</option>
+                  {orgs.map(org => (
+                    <option key={org.id} value={org.login} className="bg-background">
+                      {org.login}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <StatusBadge {...repoStateBadge} />
+                <StatusBadge {...branchStateBadge} />
+              </div>
             </div>
           </div>
           <Link
             href="/logout"
-            className="inline-flex h-12 uppercase tracking-widest items-center justify-center gap-2 rounded-none px-6 text-sm font-bold bg-transparent border border-[#333333] text-white hover:border-[#ff4500] hover:text-[#ff4500] shadow-[4px_4px_0px_0px_#ff4500] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_#ff4500]"
+            className="group inline-flex h-12 uppercase tracking-widest items-center justify-center gap-2 px-6 text-xs font-black bg-white text-black hover:bg-primary hover:text-white transition-all transform hover:-translate-y-1 active:translate-y-0 shadow-[4px_4px_0px_0px_rgba(255,255,255,0.2)] hover:shadow-primary/40"
           >
-            <IconLogout className="size-4" />
-            Выйти
+            <IconLogout className="size-4 group-hover:rotate-180 transition-transform duration-500" />
+            Termination
           </Link>
         </div>
 
-        <Card className="rounded-none border-[#333333] bg-black brutalist-shadow mb-6">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#333333] bg-[#111]">
-            <CardTitle className="flex items-center gap-2 uppercase font-black tracking-widest text-[#ff4500]">
-              <IconRepo className="size-4" />
-              Выбор репозитория
-            </CardTitle>
-            <StatusBadge
-              tone={deployDisabled ? "warning" : "success"}
-              label={deployDisabled ? "Блокировка" : "Готово"}
-            />
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="space-y-3 mb-6">
-              <label
-                htmlFor="repo-search"
-                className="text-sm font-bold uppercase tracking-widest"
-              >
-                Поиск репозитория
-              </label>
-              <div className="relative">
-                <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                <Input
-                  id="repo-search"
-                  className="pl-9 h-12 rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
-                  placeholder="owner/repo"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  ref={searchInputRef}
-                />
-              </div>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Column: Repo Selection & Config */}
+          <div className="lg:col-span-12 xl:col-span-8 space-y-6">
+            <Card className="glass-dark animate-reveal [animation-delay:100ms]">
+              <CardHeader className="flex flex-row items-center justify-between border-b border-border/50">
+                <CardTitle className="text-primary flex items-center gap-3">
+                  <IconRepo className="size-5" />
+                  Project Selection
+                </CardTitle>
+                <div className="flex bg-background/40 p-1 rounded-lg border border-border/50 scale-90">
+                  <button
+                    onClick={() => setIsBulkMode(false)}
+                    className={`px-4 py-1 text-[10px] font-black uppercase tracking-widest transition-all rounded-md ${!isBulkMode ? "bg-primary text-black" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Solo
+                  </button>
+                  <button
+                    onClick={() => setIsBulkMode(true)}
+                    className={`px-4 py-1 text-[10px] font-black uppercase tracking-widest transition-all rounded-md ${isBulkMode ? "bg-primary text-black" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Mass
+                  </button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="relative group">
+                  <IconSearch className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                  <Input 
+                    placeholder="Search repositories..." 
+                    className="pl-11 h-12 bg-background/20 border-border/50 focus:border-primary/50"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    ref={searchInputRef}
+                  />
+                </div>
 
-            <div className="flex items-center justify-between mb-4 mt-2">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Режим Выбора</p>
-              <div className="flex border border-[#333333] p-1 scale-90 origin-right">
-                <button
-                  type="button"
-                  onClick={() => setIsBulkMode(false)}
-                  className={`px-3 py-1 text-[10px] font-bold uppercase tracking-tighter transition-all ${!isBulkMode ? "bg-[#ff4500] text-black" : "text-gray-500 hover:text-white"}`}
-                >
-                  Одиночный
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsBulkMode(true)}
-                  className={`px-3 py-1 text-[10px] font-bold uppercase tracking-tighter transition-all ${isBulkMode ? "bg-[#ff4500] text-black" : "text-gray-500 hover:text-white"}`}
-                >
-                  Массовый
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className={`space-y-2 ${isBulkMode ? "lg:col-span-2" : ""}`}>
-                <label
-                  htmlFor="repo-select"
-                  className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]"
-                >
-                  <IconRepo className="size-4" />
-                  {isBulkMode ? "Выбор репозиториев (Массово)" : "Репозиторий"}
-                </label>
-                
                 {isBulkMode ? (
-                  <div className="border border-[#333333] bg-[#0a0a0a] min-h-[160px] max-h-[300px] overflow-y-auto p-2 space-y-1 brutalist-shadow custom-scrollbar">
-                    {filteredRepos.length === 0 ? (
-                      <div className="p-8 text-center text-xs text-gray-500 font-mono italic">
-                        {reposLoading ? "Загрузка..." : "Репозитории не найдены"}
-                      </div>
-                    ) : (
-                      filteredRepos.map((repo) => {
-                        const isSelected = selectedRepoIds.has(String(repo.id));
-                        return (
-                          <button
-                            key={repo.id}
-                            type="button"
-                            onClick={() => toggleRepoSelection(String(repo.id))}
-                            className={`w-full flex items-center gap-3 p-3 text-left text-sm font-mono transition-all border ${
-                              isSelected 
-                                ? "border-[#ff4500] bg-[#ff4500]/10 text-white" 
-                                : "border-transparent text-gray-400 hover:text-white hover:bg-[#111]"
-                            }`}
-                          >
-                            <div className={`size-4 border flex items-center justify-center shrink-0 ${
-                              isSelected ? "border-[#ff4500] bg-[#ff4500]" : "border-[#333333]"
-                            }`}>
-                              {isSelected && <div className="size-2 bg-black" />}
-                            </div>
-                            <span className="truncate">{repo.fullName}</span>
-                          </button>
-                        );
-                      })
-                    )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                    {filteredRepos.map(repo => {
+                      const isSelected = selectedRepoIds.has(String(repo.id));
+                      return (
+                        <button
+                          key={repo.id}
+                          onClick={() => toggleRepoSelection(String(repo.id))}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-xl border transition-all text-left group",
+                            isSelected 
+                              ? "bg-primary/10 border-primary text-foreground" 
+                              : "bg-background/20 border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                          )}
+                        >
+                          <div className={cn(
+                            "size-5 rounded-md border flex items-center justify-center transition-colors",
+                            isSelected ? "bg-primary border-primary" : "border-border bg-background group-hover:border-primary/50"
+                          )}>
+                            {isSelected && <div className="size-2 bg-black rounded-sm" />}
+                          </div>
+                          <span className="text-xs font-bold truncate uppercase tracking-tight">{repo.name}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <select
-                    id="repo-select"
-                    value={selectedRepoId}
-                    onChange={(event) => {
-                      setBranches([]);
-                      setBranchesPage(1);
-                      setBranchesHasNextPage(false);
-                      setSelectedBranch("");
-                      setSelectedRepoId(event.target.value);
-                    }}
-                    className="h-12 w-full rounded-none border border-[#333333] bg-black px-3 text-sm text-white outline-none transition focus:border-[#ff4500] focus:ring-1 focus:ring-[#ff4500]"
-                    disabled={reposLoading || filteredRepos.length === 0}
-                  >
-                    {filteredRepos.length === 0 ? (
-                      <option value="">Нет репозиториев</option>
-                    ) : (
-                      <>
-                        <option value="" disabled>Выберите репозиторий</option>
-                        {filteredRepos.map((repo) => (
-                          <option key={repo.id} value={String(repo.id)}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Select Repository</label>
+                      <select 
+                        className="w-full h-12 bg-background/40 border border-border/50 rounded-xl px-4 text-sm font-bold outline-none focus:border-primary transition-all appearance-none cursor-pointer"
+                        value={selectedRepoId}
+                        onChange={(e) => setSelectedRepoId(e.target.value)}
+                      >
+                        <option value="" disabled>Choose a project...</option>
+                        {filteredRepos.map(repo => (
+                          <option key={repo.id} value={String(repo.id)} className="bg-background text-foreground">
                             {repo.fullName}
                           </option>
                         ))}
-                      </>
-                    )}
-                  </select>
-                )}
-              </div>
-
-              {!isBulkMode && (
-                <div className="space-y-2">
-                  <label
-                    htmlFor="branch-select"
-                    className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#ff4500]"
-                  >
-                    <IconBranch className="size-4" />
-                    Ветка
-                  </label>
-                  <select
-                    id="branch-select"
-                    value={selectedBranch}
-                    onChange={(event) => setSelectedBranch(event.target.value)}
-                    className="h-12 w-full rounded-none border border-[#333333] bg-black px-3 text-sm text-white outline-none transition focus:border-[#ff4500] focus:ring-1 focus:ring-[#ff4500]"
-                    disabled={branchesLoading || branches.length === 0}
-                  >
-                    {branches.length === 0 ? (
-                      <option value="">Нет веток</option>
-                    ) : (
-                      <>
-                        <option value="" disabled>Выберите ветку</option>
-                        {branches.map((branch) => (
-                          <option key={branch.name} value={branch.name}>
-                            {branch.name}
-                          </option>
-                        ))}
-                      </>
-                    )}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {reposLoading ? (
-              <p className="text-sm text-gray-400 font-mono mt-4">
-                Загрузка репозиториев...
-              </p>
-            ) : null}
-            {!reposLoading && repos.length === 0 && !reposError ? (
-              <p className="mt-4 border border-[#333333] p-4 text-sm text-gray-400 font-mono">
-                Репозитории не найдены. Убедитесь, что ваше OAuth приложение
-                имеет scope [repo].
-              </p>
-            ) : null}
-            {reposError ? (
-              <p className="mt-4 border border-red-900 bg-black text-red-500 p-4 text-sm font-mono font-bold">
-                {reposError}
-              </p>
-            ) : null}
-            {branchesError ? (
-              <p className="mt-4 border border-red-900 bg-black text-red-500 p-4 text-sm font-mono font-bold">
-                {branchesError}
-              </p>
-            ) : null}
-
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              {reposHasNextPage ? (
-                <Button
-                  type="button"
-                  className="w-full sm:w-auto"
-                  variant="outline"
-                  disabled={reposLoading}
-                  onClick={() => setRepoPage((current) => current + 1)}
-                >
-                  {reposLoading
-                    ? "Загрузка..."
-                    : "Загрузить больше репозиториев"}
-                </Button>
-              ) : null}
-              {selectedRepo && branchesHasNextPage ? (
-                <Button
-                  type="button"
-                  className="w-full sm:w-auto"
-                  variant="outline"
-                  disabled={branchesLoading}
-                  onClick={() => setBranchesPage((current) => current + 1)}
-                >
-                  {branchesLoading ? "Загрузка..." : "Загрузить больше веток"}
-                </Button>
-              ) : null}
-            </div>
-
-            {isBulkMode && selectedRepoIds.size > 0 && (
-              <div className="mt-8 border-t border-[#333333] pt-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex flex-col text-left">
-                    <p className="text-xs font-bold uppercase tracking-widest text-[#ff4500]">
-                      Массовый деплой
-                    </p>
-                    <p className="text-[10px] font-mono text-gray-500">
-                      Выбрано проектов: {selectedRepoIds.size}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRepoIds(new Set())}
-                    className="text-[10px] uppercase font-bold text-gray-500 hover:text-white underline underline-offset-4"
-                  >
-                    Сбросить выбор
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                  <Button
-                    variant="outline"
-                    className="h-10 text-[10px]"
-                    onClick={() => handleBulkDeploy("vercel")}
-                  >
-                    Vercel
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-10 text-[10px]"
-                    onClick={() => handleBulkDeploy("netlify")}
-                  >
-                    Netlify
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-10 text-[10px]"
-                    onClick={() => handleBulkDeploy("cloudflare")}
-                  >
-                    Cloudflare
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-10 text-[10px]"
-                    onClick={() => handleBulkDeploy("railway")}
-                  >
-                    Railway
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-10 text-[10px]"
-                    onClick={() => handleBulkDeploy("render")}
-                  >
-                    Render
-                  </Button>
-                </div>
-                <p className="mt-4 text-[10px] text-gray-500 font-mono italic">
-                  * Будут открыты новые вкладки с деплоем веток по умолчанию.
-                  Всплывающие окна должны быть разрешены в браузере.
-                </p>
-              </div>
-            )}
-
-            <Accordion>
-              <AccordionTrigger className="inline-flex items-center gap-2 uppercase tracking-widest font-bold">
-                <IconSettings className="size-4 text-[#ff4500]" />
-                Дополнительные настройки (Опционально)
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="grid gap-4 lg:grid-cols-3 pt-4">
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="root-directory"
-                      className="text-sm font-bold uppercase tracking-widest"
-                    >
-                      Корневая директория (Root)
-                    </label>
-                    <Input
-                      id="root-directory"
-                      placeholder="apps/web"
-                      value={rootDirectory}
-                      onChange={(event) => setRootDirectory(event.target.value)}
-                      className="rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="build-command"
-                      className="text-sm font-bold uppercase tracking-widest"
-                    >
-                      Команда сборки (Build)
-                    </label>
-                    <Input
-                      id="build-command"
-                      placeholder="npm run build"
-                      value={buildCommand}
-                      onChange={(event) => setBuildCommand(event.target.value)}
-                      className="rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="output-directory"
-                      className="text-sm font-bold uppercase tracking-widest"
-                    >
-                      Директория вывода (Output)
-                    </label>
-                    <Input
-                      id="output-directory"
-                      placeholder=".next"
-                      value={outputDirectory}
-                      onChange={(event) =>
-                        setOutputDirectory(event.target.value)
-                      }
-                      className="rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2 mt-4">
-                  <label
-                    htmlFor="env-vars"
-                    className="text-sm font-bold uppercase tracking-widest"
-                  >
-                    Переменные окружения (KEY=VALUE, по одной на строку)
-                  </label>
-                  <Textarea
-                    id="env-vars"
-                    value={envText}
-                    onChange={(event) => setEnvText(event.target.value)}
-                    placeholder={
-                      "API_URL=https://api.example.com\nNODE_ENV=production"
-                    }
-                    className="rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500] min-h-[100px]"
-                  />
-                  <p className="text-xs text-gray-400 font-mono">
-                    Vercel: передаются только имена ключей. Netlify: ключи и
-                    значения в URL hash. Cloudflare: не передаются переменные
-                    окружения, только URL репозитория.
-                  </p>
-                </div>
-
-                <div className="mt-6 border border-[#333333] bg-black p-4 brutalist-shadow">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500]">
-                      Автоматические рекомендации
-                    </p>
-                    <Button
-                      type="button"
-                      className="w-full sm:w-auto"
-                      variant="outline"
-                      disabled={recommendationLoading || !selectedRepo}
-                      onClick={handleAutoRecommendConfig}
-                    >
-                      {recommendationLoading
-                        ? "Детектирование..."
-                        : "Распознать конфигурацию репозитория"}
-                    </Button>
-                  </div>
-                  <p className="mt-2 text-xs text-gray-400 font-mono">
-                    Распознанный фреймворк:{" "}
-                    <span className="text-white bg-[#333333] px-1">
-                      {repoRecommendationFramework}
-                    </span>
-                  </p>
-                  {repoRecommendationNotes.length > 0 ? (
-                    <ul className="mt-2 list-none space-y-1 text-xs text-gray-300 font-mono">
-                      {repoRecommendationNotes.map((note) => (
-                        <li
-                          key={note}
-                          className="before:content-['>_'] before:mr-2 before:text-[#ff4500]"
-                        >
-                          {note}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-
-                <div className="mt-6 border border-[#333333] p-4 brutalist-shadow">
-                  <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500] mb-4">
-                    Сохранение Шаблонов
-                  </p>
-                  <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap">
-                    <Input
-                      placeholder="Имя шаблона (напр. Next.js Default)"
-                      value={presetName}
-                      onChange={(event) => setPresetName(event.target.value)}
-                      className="w-full sm:max-w-xs rounded-none border-[#333333] bg-black focus-visible:ring-1 focus-visible:ring-[#ff4500]"
-                    />
-                    <Button
-                      type="button"
-                      className="w-full sm:w-auto"
-                      variant="outline"
-                      onClick={handleSavePreset}
-                    >
-                      Сохранить шаблон
-                    </Button>
-                    <Button
-                      type="button"
-                      className="w-full sm:w-auto"
-                      variant="outline"
-                      onClick={handleClearPreset}
-                    >
-                      Очистить все
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4 mt-6">
-                    <p className="text-sm font-bold uppercase tracking-widest">
-                      Сохраненные шаблоны
-                    </p>
-                    {presetItems.length === 0 ? (
-                      <p className="text-xs text-gray-500 font-mono">
-                        Нет сохраненных шаблонов.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {presetItems.map((item) => (
-                          <div
-                            key={item.id}
-                            className="flex flex-col gap-2 border border-[#333333] bg-black p-3 sm:flex-row sm:items-center sm:justify-between"
-                          >
-                            <div>
-                              <p className="text-sm font-bold">{item.name}</p>
-                              <p className="text-xs text-gray-500 font-mono">
-                                Обновлен:{" "}
-                                {new Date(item.updatedAt).toLocaleString()}
-                              </p>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="w-full sm:w-auto"
-                                onClick={() => handleLoadPreset(item)}
-                              >
-                                Загрузить
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="w-full sm:w-auto border-red-900 border text-red-500 hover:bg-black hover:text-red-500 hover:border-red-500"
-                                onClick={() => handleDeletePreset(item.id)}
-                              >
-                                Удалить
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-
-              </AccordionContent>
-            </Accordion>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-none border-[#333333] bg-black brutalist-shadow mt-6">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#333333] bg-[#111]">
-            <CardTitle className="flex items-center gap-2 uppercase font-black tracking-widest text-[#ff4500]">
-              <IconRocket className="size-4" />
-              Деплой Системы
-            </CardTitle>
-            <StatusBadge
-              tone={deployDisabled ? "warning" : "success"}
-              label={deployDisabled ? "Выберите ветку" : "Системы готовы"}
-            />
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="grid gap-3 border border-[#333333] bg-[#0a0a0a] p-4 text-sm text-gray-300 font-mono sm:grid-cols-2 brutalist-shadow">
-              <p className="break-all">
-                <span className="text-[#ff4500] font-bold">
-                  URL Репозитория:
-                </span>{" "}
-                {selectedRepo?.htmlUrl ?? "НЕ ВЫБРАНО"}
-              </p>
-              <p>
-                <span className="text-[#ff4500] font-bold">
-                  Ветка (Branch):
-                </span>{" "}
-                {selectedBranch || "НЕ ВЫБРАНО"}
-              </p>
-            </div>
-
-            {commitsLoading ? (
-              <div className="mt-6 border border-[#333333] bg-[#0a0a0a] p-4 brutalist-shadow">
-                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4">
-                  Загрузка коммитов
-                </p>
-                <SkeletonList count={3} />
-              </div>
-            ) : commits.length > 0 ? (
-              <div className="mt-6 border border-[#333333] bg-[#0a0a0a] p-4 brutalist-shadow">
-                <p className="text-xs font-bold uppercase tracking-widest text-[#ff4500] mb-4">
-                  Предпросмотр деплоя (последние коммиты)
-                </p>
-                <div className="space-y-3">
-                  {commits.map((c) => (
-                    <div key={c.sha} className="flex flex-col gap-1 text-sm font-mono border-b border-[#333] pb-2 last:border-0 last:pb-0">
-                      <div className="flex items-center gap-2">
-                        <a href={c.url} target="_blank" rel="noreferrer" className="text-[#ff4500] hover:underline font-bold">
-                          {c.sha}
-                        </a>
-                        <span className="text-gray-400 truncate" title={c.message}>{c.message}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span>@{c.author}</span>
-                        <span>·</span>
-                        <span>{new Date(c.date).toLocaleString()}</span>
-                      </div>
+                      </select>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-6 grid gap-4 md:grid-cols-3 lg:grid-cols-5">
-              <button
-                type="button"
-                onClick={() => triggerDeploy("vercel")}
-                className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
-                  deployDisabled
-                    ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
-                    : "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#ff4500] active:shadow-[2px_2px_0px_0px_#ff4500]"
-                }`}
-              >
-                <IconCloud className="size-5" />
-                Vercel
-              </button>
-              <button
-                type="button"
-                onClick={() => triggerDeploy("netlify")}
-                className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
-                  deployDisabled
-                    ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
-                    : "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#00ff00] active:shadow-[2px_2px_0px_0px_#00ff00]"
-                }`}
-              >
-                <IconRocket className="size-5" />
-                Netlify
-              </button>
-              <button
-                type="button"
-                onClick={() => triggerDeploy("cloudflare")}
-                className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
-                  deployDisabled
-                    ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
-                    : "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#ff00ff] active:shadow-[2px_2px_0px_0px_#ff00ff]"
-                }`}
-              >
-                <IconBolt className="size-5" />
-                Cloudflare
-              </button>
-              <button
-                type="button"
-                onClick={() => triggerDeploy("railway")}
-                className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
-                  deployDisabled
-                    ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
-                    : "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#00ccff] active:shadow-[2px_2px_0px_0px_#00ccff]"
-                }`}
-              >
-                <IconRocket className="size-5" />
-                Railway
-              </button>
-              <button
-                type="button"
-                onClick={() => triggerDeploy("render")}
-                className={`inline-flex uppercase tracking-widest h-14 items-center justify-center gap-2 text-sm font-bold transition-all duration-100 will-change-transform active:translate-x-[2px] active:translate-y-[2px] ${
-                  deployDisabled
-                    ? "pointer-events-none bg-[#111] border border-[#333] text-gray-600"
-                    : "bg-white text-black border border-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_#ffcc00] active:shadow-[2px_2px_0px_0px_#ffcc00]"
-                }`}
-              >
-                <IconBolt className="size-5" />
-                Render
-              </button>
-            </div>
-
-            <div className="mt-8 grid gap-2 border border-[#333333] bg-black p-4 text-xs text-gray-400 md:grid-cols-3 brutalist-shadow">
-              <p>
-                Vercel: ветка не передается, Deploy Button не поддерживает
-                параметр ветки.
-              </p>
-              <p>
-                Netlify: ветка через `branch`, root через `base`. Railway: env
-                передается в URL.
-              </p>
-              <p>
-                Cloudflare: Workers Deploy Button (URL). Render: требуется
-                render.yaml в репо.
-              </p>
-            </div>
-
-            <div className="mt-6 overflow-x-auto border border-[#333333] bg-black p-4 brutalist-shadow">
-              <p className="mb-4 text-xs font-bold uppercase tracking-widest text-[#ff4500]">
-                Матрица возможностей провайдеров
-              </p>
-              <table className="min-w-full text-left text-xs text-white font-mono">
-                <thead>
-                  <tr className="text-gray-500 border-b border-[#333333]">
-                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">
-                      Провайдер
-                    </th>
-                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">
-                      Поддержка веток
-                    </th>
-                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">
-                      Переопределение сборки
-                    </th>
-                    <th className="pb-3 pr-4 font-bold uppercase tracking-widest">
-                      Env
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-[#333333]/50">
-                    <td className="py-3 pr-4 font-bold">Vercel</td>
-                    <td className="py-3 pr-4 text-red-400">Нет</td>
-                    <td className="py-3 pr-4 text-green-400">Да</td>
-                    <td className="py-3 pr-4">Только ключи</td>
-                  </tr>
-                  <tr className="border-b border-[#333333]/50">
-                    <td className="py-3 pr-4 font-bold">Netlify</td>
-                    <td className="py-3 pr-4 text-green-400">Да</td>
-                    <td className="py-3 pr-4 text-yellow-400">Частично</td>
-                    <td className="py-3 pr-4">URL hash</td>
-                  </tr>
-                  <tr className="border-b border-[#333333]/50">
-                    <td className="py-3 pr-4 font-bold">Cloudflare</td>
-                    <td className="py-3 pr-4 text-red-400">Нет</td>
-                    <td className="py-3 pr-4 text-red-400">Нет</td>
-                    <td className="py-3 pr-4">Только URL</td>
-                  </tr>
-                  <tr className="border-b border-[#333333]/50">
-                    <td className="py-3 pr-4 font-bold text-[#00ccff]">
-                      Railway
-                    </td>
-                    <td className="py-3 pr-4 text-red-400">Нет</td>
-                    <td className="py-3 pr-4 text-yellow-400">Root dir</td>
-                    <td className="py-3 pr-4 text-green-400">Ключ/Значение</td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 pr-4 font-bold text-[#ffcc00]">
-                      Render
-                    </td>
-                    <td className="py-3 pr-4 text-red-400">Нет</td>
-                    <td className="py-3 pr-4 text-red-400">render.yaml</td>
-                    <td className="py-3 pr-4">render.yaml</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* === DEPLOY STATUS PANEL === */}
-            {(deployStatuses.length > 0 || statusPolling) ? (
-              <div className="mt-8 border border-[#333333] bg-[#0a0a0a] p-6 brutalist-shadow">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#333333] pb-4">
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500]">
-                      ■ Статус Деплоя
-                    </p>
-                    {statusPolling ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-mono text-green-400">
-                        <span className="inline-block size-2 rounded-full bg-green-400 animate-pulse" />
-                        LIVE · {DEPLOY_POLL_INTERVAL_MS / 1000}s
-                      </span>
-                    ) : (
-                      <span className="text-xs font-mono text-gray-600">ОСТАНОВЛЕН</span>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="text-xs"
-                      onClick={() => fetchDeployStatuses()}
-                    >
-                      Обновить
-                    </Button>
-                    {statusPolling ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="text-xs border-red-900 text-red-500 hover:bg-black hover:text-red-500 hover:border-red-500"
-                        onClick={stopPolling}
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Target Branch</label>
+                       <select 
+                        className="w-full h-12 bg-background/40 border border-border/50 rounded-xl px-4 text-sm font-bold outline-none focus:border-primary transition-all appearance-none cursor-pointer"
+                        value={selectedBranch}
+                        onChange={(e) => setSelectedBranch(e.target.value)}
+                        disabled={!selectedRepoId || branchesLoading}
                       >
-                        Стоп
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="text-xs"
-                        onClick={startPolling}
-                        disabled={!selectedRepo}
-                      >
-                        Возобновить
-                      </Button>
-                    )}
+                        {branchesLoading ? <option>Loading...</option> : (
+                          <>
+                            <option value="" disabled>Choose a branch...</option>
+                            {branches.map(b => <option key={b.name} value={b.name} className="bg-background">{b.name}</option>)}
+                          </>
+                        )}
+                      </select>
+                    </div>
                   </div>
+                )}
+                
+                {reposHasNextPage && (
+                  <Button variant="outline" className="w-full text-[10px] uppercase font-black" onClick={() => setRepoPage(prev => prev+1)}>
+                    Load More Repositories
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="glass animate-reveal [animation-delay:200ms]">
+               <CardHeader className="border-b border-border/50">
+                  <CardTitle className="text-xs flex items-center gap-2">
+                    <IconSettings className="size-3" />
+                    Deployment Parameters
+                  </CardTitle>
+               </CardHeader>
+               <CardContent className="space-y-6 pt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground">Root Dir</label>
+                      <Input value={rootDirectory} onChange={e => setRootDirectory(e.target.value)} placeholder="e.g. apps/web" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground">Build Command</label>
+                      <Input value={buildCommand} onChange={e => setBuildCommand(e.target.value)} placeholder="npm run build" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground">Output Dir</label>
+                      <Input value={outputDirectory} onChange={e => setOutputDirectory(e.target.value)} placeholder=".next" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground">Environment Variables</label>
+                      <Button variant="outline" className="h-6 text-[8px] uppercase font-black" onClick={handleAutoRecommendConfig}>Auto-Detect Config</Button>
+                    </div>
+                    <Textarea 
+                      value={envText} 
+                      onChange={e => setEnvText(e.target.value)} 
+                      placeholder="KEY=VALUE" 
+                      className="min-h-[120px] bg-background/20 font-mono text-xs"
+                    />
+                  </div>
+                  
+                  <div className="pt-4 border-t border-border/50">
+                    <div className="flex gap-2">
+                      <Input placeholder="Template Name" value={presetName} onChange={e => setPresetName(e.target.value)} className="h-10 text-xs" />
+                      <Button className="h-10 text-xs font-black px-6" onClick={handleSavePreset}>Save Preset</Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-4">
+                       {presetItems.map(item => (
+                         <div key={item.id} className="flex items-center gap-2 bg-background/40 border border-border/50 pl-3 pr-1 py-1 rounded-lg group animate-in slide-in-from-left-2">
+                           <span className="text-[10px] font-bold uppercase">{item.name}</span>
+                           <Button variant="ghost" className="size-6 p-0 hover:bg-white hover:text-black" onClick={() => handleLoadPreset(item)}>↓</Button>
+                           <Button variant="ghost" className="size-6 p-0 hover:bg-destructive hover:text-white" onClick={() => handleDeletePreset(item.id)}>×</Button>
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+               </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column: Intelligence & Preview */}
+          <div className="lg:col-span-12 xl:col-span-4 space-y-6">
+            <Card className="glass border-primary/20 bg-primary/5 animate-reveal [animation-delay:300ms]">
+               <CardHeader className="border-b border-primary/10">
+                  <CardTitle className="text-xs font-black flex items-center gap-2">
+                    <IconBolt className="size-4 animate-pulse" />
+                    Project Intelligence
+                  </CardTitle>
+               </CardHeader>
+               <CardContent className="p-0">
+                  {selectedRepo ? (
+                    <div className="divide-y divide-primary/10">
+                       {branchDiff && (
+                         <div className="p-5 bg-primary/10 space-y-2">
+                            <p className="text-[10px] font-black uppercase text-primary">Branch Analysis</p>
+                            <p className="text-lg font-black leading-tight italic">
+                              {branchDiff.aheadBy > 0 
+                                ? `Ahead by ${branchDiff.aheadBy} commits` 
+                                : "No new changes detected"}
+                            </p>
+                            <div className="flex gap-2 pt-1">
+                               <span className="text-[10px] font-mono bg-green-500/20 text-green-400 px-2 py-0.5 rounded">+{branchDiff.aheadBy}</span>
+                               <span className="text-[10px] font-mono bg-red-500/20 text-red-400 px-2 py-0.5 rounded">-{branchDiff.behindBy}</span>
+                            </div>
+                         </div>
+                       )}
+                       
+                       <div className="p-5">
+                          <p className="text-[10px] font-black uppercase text-muted-foreground mb-4">README Preview</p>
+                          <div className="relative">
+                            {readmeLoading ? (
+                               <div className="space-y-2">
+                                  <div className="h-4 bg-white/5 rounded w-3/4 animate-pulse"></div>
+                                  <div className="h-4 bg-white/5 rounded w-full animate-pulse"></div>
+                                  <div className="h-4 bg-white/5 rounded w-1/2 animate-pulse"></div>
+                               </div>
+                            ) : (
+                               <div className="text-[11px] font-mono text-muted-foreground leading-relaxed max-h-[400px] overflow-y-auto custom-scrollbar pr-2 whitespace-pre-wrap">
+                                  {readmeContent || "Select a project to analyze intelligence metrics."}
+                               </div>
+                            )}
+                            <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-background/90 to-transparent pointer-events-none"></div>
+                          </div>
+                       </div>
+                    </div>
+                  ) : (
+                    <div className="p-10 text-center space-y-4">
+                       <IconSearch className="size-10 mx-auto text-muted-foreground opacity-20" />
+                       <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest leading-relaxed">Select a project<br/>to begin extraction</p>
+                    </div>
+                  )}
+               </CardContent>
+            </Card>
+
+            <Card className="glass animate-reveal [animation-delay:400ms]">
+               <CardHeader className="border-b border-border/50">
+                  <CardTitle className="text-xs font-black">Quick Launch</CardTitle>
+               </CardHeader>
+               <CardContent className="pt-6 space-y-3">
+                  <div className="grid grid-cols-1 gap-2">
+                     <button
+                        onClick={() => triggerDeploy("vercel")}
+                        disabled={deployDisabled}
+                        className="group flex items-center justify-between h-14 w-full bg-white text-black px-5 font-black uppercase tracking-widest text-xs hover:bg-primary hover:text-white transition-all disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <div className="flex items-center gap-3">
+                          <IconCloud className="size-5" />
+                          Vercel
+                        </div>
+                        <span className="text-[10px] font-mono group-hover:translate-x-1 transition-transform">→</span>
+                      </button>
+                      <button
+                        onClick={() => triggerDeploy("netlify")}
+                        disabled={deployDisabled}
+                        className="group flex items-center justify-between h-14 w-full bg-white text-black px-5 font-black uppercase tracking-widest text-xs hover:bg-[#00AD9F] hover:text-white transition-all disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                         <div className="flex items-center gap-3">
+                           <IconRocket className="size-5" />
+                           Netlify
+                         </div>
+                         <span className="text-[10px] font-mono group-hover:translate-x-1 transition-transform">→</span>
+                      </button>
+                      <button
+                        onClick={() => triggerDeploy("cloudflare")}
+                        disabled={deployDisabled}
+                        className="group flex items-center justify-between h-14 w-full bg-white text-black px-5 font-black uppercase tracking-widest text-xs hover:bg-[#F38020] hover:text-white transition-all disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                         <div className="flex items-center gap-3">
+                           <IconBolt className="size-5" />
+                           Cloudflare
+                         </div>
+                         <span className="text-[10px] font-mono group-hover:translate-x-1 transition-transform">→</span>
+                      </button>
+                  </div>
+               </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Full Width Row: Active Deployments & History */}
+        <div className="mt-10 space-y-10">
+          {(deployStatuses.length > 0 || statusPolling) && (
+            <Card className="glass-dark border-primary/30 animate-reveal [animation-delay:500ms]">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-xs font-black uppercase tracking-widest text-primary flex items-center gap-3">
+                  <IconRocket className="size-4 animate-pulse" />
+                  Active Extraction Stream
+                </CardTitle>
+                <div className="flex items-center gap-3">
+                   <StatusBadge tone={statusPolling ? "loading" : "neutral"} label={statusPolling ? "Listening" : "Paused"} />
+                   <Button variant="ghost" className="size-8 p-0" onClick={() => fetchDeployStatuses()}>↻</Button>
                 </div>
-
-                {statusError ? (
-                  <p className="mt-4 text-xs font-mono text-red-500 border border-red-900 p-3">{statusError}</p>
-                ) : null}
-
-                {deployStatuses.length === 0 && statusPolling ? (
-                  <p className="mt-6 text-xs font-mono text-gray-500">
-                    {">"} Ожидание данных от GitHub Deployments API...
-                  </p>
-                ) : null}
-
-                <div className="mt-4 space-y-3">
-                  {deployStatuses.map((d) => {
-                    const stateConfig = {
-                      pending: { label: "В ОЧЕРЕДИ", color: "text-yellow-400", bar: "bg-yellow-400", width: "w-1/6" },
-                      building: { label: "СБОРКА", color: "text-[#ff4500]", bar: "bg-[#ff4500]", width: "w-3/5" },
-                      ready: { label: "ГОТОВО", color: "text-green-400", bar: "bg-green-400", width: "w-full" },
-                      error: { label: "ОШИБКА", color: "text-red-500", bar: "bg-red-500", width: "w-full" },
-                      inactive: { label: "НЕАКТИВЕН", color: "text-gray-500", bar: "bg-gray-500", width: "w-full" },
-                    }[d.state] ?? { label: d.state.toUpperCase(), color: "text-gray-400", bar: "bg-gray-400", width: "w-1/4" };
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {deployStatuses.length === 0 && statusPolling && (
+                  <div className="py-20 text-center opacity-30 italic text-xs font-mono">
+                    Awaiting payload from GitHub Deployments...
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {deployStatuses.map(d => {
+                    const statusConfig = {
+                      pending: { label: "In Queue", color: "text-yellow-400", bar: "bg-yellow-400", width: "w-1/4" },
+                      building: { label: "Building", color: "text-primary", bar: "bg-primary", width: "w-3/5" },
+                      ready: { label: "Decommissioned", color: "text-green-400", bar: "bg-green-400", width: "w-full" },
+                      error: { label: "Critical Error", color: "text-red-500", bar: "bg-red-500", width: "w-full" },
+                    }[d.state] || { label: d.state, color: "text-muted-foreground", bar: "bg-muted", width: "w-0" };
 
                     return (
-                      <div key={d.id} className="border border-[#333333] bg-black p-4 font-mono text-xs transition-colors hover:border-[#555]">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[#ff4500]">{">"}</span>
-                            <span className="text-white font-bold">{d.environment}</span>
-                            <span className="text-gray-500">·</span>
-                            <span className="text-gray-400">{d.ref}</span>
-                            {d.creator ? (
-                              <>
-                                <span className="text-gray-500">·</span>
-                                <span className="text-gray-500">@{d.creator}</span>
-                              </>
-                            ) : null}
-                          </div>
-                          <span className={`font-bold uppercase tracking-widest ${stateConfig.color}`}>
-                            {stateConfig.label}
-                          </span>
+                      <div key={d.id} className="bg-background/40 border border-border/50 rounded-xl p-5 hover:border-primary/50 transition-all">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="space-y-1">
+                               <p className="text-[10px] font-black uppercase text-muted-foreground">{d.environment}</p>
+                               <h3 className="text-sm font-black uppercase tracking-tight">{d.ref}</h3>
+                            </div>
+                            <span className={cn("text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded bg-background/50 border", statusConfig.color)}>
+                              {statusConfig.label}
+                            </span>
+                        </div>
+                        
+                        <div className="h-1 w-full bg-border/10 rounded-full overflow-hidden mb-4">
+                            <div className={cn("h-full transition-all duration-1000", statusConfig.bar, statusConfig.width, d.state === "building" && "animate-pulse")} />
                         </div>
 
-                        {/* Progress bar */}
-                        <div className="mt-3 h-2 w-full bg-[#222]">
-                          <div
-                            className={`h-full ${stateConfig.bar} ${stateConfig.width} transition-all duration-500 ${
-                              d.state === "building" ? "animate-pulse" : ""
-                            }`}
-                          />
-                        </div>
-
-                        <div className="mt-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 text-gray-500">
-                          <span>{new Date(d.createdAt).toLocaleString()}</span>
-                          {d.description ? (
-                            <>
-                              <span className="hidden sm:inline text-[#333]">|</span>
-                              <span className="text-gray-400 truncate max-w-xs">{d.description}</span>
-                            </>
-                          ) : null}
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap gap-3">
-                          {d.environmentUrl ? (
-                            <a href={d.environmentUrl} target="_blank" rel="noreferrer" className="text-[#ff4500] hover:underline">
-                              → Сайт
-                            </a>
-                          ) : null}
-                          {d.targetUrl ? (
-                            <a href={d.targetUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white hover:underline">
-                              → Детали
-                            </a>
-                          ) : null}
-                          {d.logUrl ? (
-                            <a href={d.logUrl} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white hover:underline">
-                              → Провайдер
-                            </a>
-                          ) : null}
-                          
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (openLogsId === d.id) {
-                                setOpenLogsId(null);
-                              } else {
-                                setOpenLogsId(d.id);
-                                if (!deploymentLogs[d.id]) {
-                                  fetchLogs(d.id);
+                        <div className="flex items-center justify-between text-[10px] font-bold">
+                           <div className="flex gap-4">
+                              {d.environmentUrl && <a href={d.environmentUrl} target="_blank" className="text-primary hover:underline">Open Site</a>}
+                              {d.logUrl && <a href={d.logUrl} target="_blank" className="text-muted-foreground hover:text-foreground italic">Provider Hub</a>}
+                           </div>
+                           <button 
+                              onClick={() => {
+                                if (openLogsId === d.id) setOpenLogsId(null);
+                                else {
+                                  setOpenLogsId(d.id);
+                                  if (!deploymentLogs[d.id]) fetchLogs(d.id);
                                 }
-                              }
-                            }}
-                            className="text-gray-500 hover:text-white underline underline-offset-4 decoration-gray-700 hover:decoration-white transition-all ml-auto"
-                          >
-                            {openLogsId === d.id ? "Скрыть терминал" : "Логи события"}
-                          </button>
+                              }}
+                              className="text-muted-foreground hover:text-primary transition-colors uppercase tracking-widest"
+                            >
+                              {openLogsId === d.id ? "Hide Logs" : "View Logs"}
+                            </button>
                         </div>
 
                         {openLogsId === d.id && (
-                          <div className="mt-4 border border-[#333333] bg-[#050505] p-3 font-mono text-[10px] brutalist-shadow animate-in fade-in zoom-in-95 duration-200">
-                            <div className="flex items-center justify-between border-b border-[#222] pb-2 mb-2">
-                              <span className="text-[#ff4500] font-bold uppercase tracking-widest flex items-center gap-2">
-                                <IconBolt className="size-3" />
-                                Терминал Событий
-                              </span>
-                              <div className="flex gap-1.5">
-                                <div className="size-1.5 rounded-full bg-red-900/50" />
-                                <div className="size-1.5 rounded-full bg-yellow-900/50" />
-                                <div className="size-1.5 rounded-full bg-green-900/50" />
+                          <div className="mt-5 bg-black rounded-lg border border-border/50 p-4 font-mono text-[9px] animate-in zoom-in-95">
+                              <div className="max-h-[150px] overflow-y-auto custom-scrollbar space-y-1 pr-2">
+                                 {deploymentLogs[d.id]?.map((line, i) => (
+                                   <div key={i} className="opacity-60 hover:opacity-100 transition-opacity" dangerouslySetInnerHTML={{ __html: line }} />
+                                 ))}
+                                 {!["ready", "error", "inactive"].includes(d.state) && (
+                                   <p className="text-primary animate-pulse font-bold mt-2 tracking-widest uppercase">/ / LISTENING_FOR_EVENTS</p>
+                                 )}
                               </div>
-                            </div>
-                            <div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1 pr-2">
-                              {logsLoading && !deploymentLogs[d.id] ? (
-                                <p className="text-gray-600 animate-pulse">{">"} Подключение к потоку данных...</p>
-                              ) : (deploymentLogs[d.id] || []).length === 0 ? (
-                                <p className="text-gray-600 italic">{">"} Ожидание регистрации события в GitHub API...</p>
-                              ) : (
-                                deploymentLogs[d.id]?.map((line, idx) => (
-                                  <div key={idx} className="leading-relaxed" dangerouslySetInnerHTML={{ __html: line }} />
-                                ))
-                              )}
-                              {!["ready", "error", "inactive"].includes(d.state) && (
-                                <p className="text-blue-500 animate-pulse mt-1 font-bold">{">"} ПРОСЛУШИВАНИЕ СОБЫТИЙ...</p>
-                              )}
-                            </div>
                           </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            ) : null}
+              </CardContent>
+            </Card>
+          )}
 
-            <div className="mt-8">
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={handleRefreshRepositories}
-              >
-                Обновить репозитории
-              </Button>
-            </div>
-
-            <div className="mt-8 border border-[#333333] bg-[#0a0a0a] p-6 brutalist-shadow">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-[#333333] pb-4">
-                <p className="text-sm font-bold uppercase tracking-widest text-[#ff4500]">
-                  История деплоев
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full sm:w-auto border-red-900 border text-red-500 hover:bg-black hover:text-red-500 hover:border-red-500"
-                  onClick={handleClearHistory}
-                >
-                  Очистить историю
-                </Button>
-              </div>
-
-              {historyItems.length === 0 ? (
-                <p className="mt-6 text-xs text-gray-500 font-mono">
-                  История пуста. Запустите провайдера для создания первой
-                  записи.
-                </p>
-              ) : (
-                <div className="mt-6 space-y-4">
-                  {historyItems.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="flex flex-col gap-4 border border-[#333333] bg-black p-4 lg:flex-row lg:items-center lg:justify-between transition-colors hover:border-white"
-                    >
-                      <div className="space-y-2">
-                        <p className="text-sm font-bold text-white uppercase tracking-widest">
-                          {entry.repoFullName}{" "}
-                          <span className="text-[#ff4500] ml-2">
-                            [{entry.provider}]
-                          </span>
-                        </p>
-                        <p className="text-xs text-gray-400 font-mono flex gap-3">
-                          <span>Ветка: {entry.branch || "-"}</span>
-                          <span className="text-[#333]">|</span>
-                          <span>Root: {entry.rootDirectory || "."}</span>
-                          <span className="text-[#333]">|</span>
-                          <span>Build: {entry.buildCommand || "-"}</span>
-                        </p>
-                        <p className="text-xs text-gray-600 font-mono">
-                          {new Date(entry.createdAt).toLocaleString()} · Ключи
-                          Env:{" "}
-                          {entry.envKeys.length > 0
-                            ? entry.envKeys.join(", ")
-                            : "нет"}
-                        </p>
-                      </div>
-                      <div className="flex flex-col gap-3 sm:flex-row">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="w-full sm:w-auto"
-                          onClick={() => handleApplyHistoryEntry(entry)}
-                        >
-                          Загрузить конфиг
-                        </Button>
-                        <a
-                          href={entry.deployUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex h-10 items-center justify-center border border-[#333333] bg-transparent px-4 text-xs font-bold uppercase tracking-widest text-white transition hover:border-[#ff4500] hover:text-[#ff4500] active:translate-x-[2px] active:translate-y-[2px]"
-                        >
-                          Перезапустить
-                        </a>
-                      </div>
-                    </div>
-                  ))}
+          <Card className="glass animate-reveal [animation-delay:600ms]">
+             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/50">
+                <CardTitle className="text-xs font-black flex items-center gap-2 uppercase tracking-widest italic">
+                   Archived Records
+                </CardTitle>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                   <div className="relative">
+                      <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 size-3 text-muted-foreground" />
+                      <input 
+                        className="h-9 pl-9 pr-4 bg-background/20 border border-border/50 rounded-lg text-[10px] font-bold outline-none focus:border-primary w-full sm:w-56"
+                        placeholder="Filter archives..."
+                        value={historySearch}
+                        onChange={e => setHistorySearch(e.target.value)}
+                      />
+                   </div>
+                   <select 
+                      className="h-9 px-3 bg-background/20 border border-border/50 rounded-lg text-[10px] font-bold outline-none focus:border-primary appearance-none cursor-pointer"
+                      value={historyFilterProvider}
+                      onChange={e => setHistoryFilterProvider(e.target.value)}
+                   >
+                     <option value="all">All Channels</option>
+                     <option value="vercel">Vercel</option>
+                     <option value="netlify">Netlify</option>
+                     <option value="cloudflare">Cloudflare</option>
+                     <option value="railway">Railway</option>
+                     <option value="render">Render</option>
+                   </select>
+                   <Button variant="outline" className="h-9 text-[10px] font-black border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white" onClick={handleClearHistory}>Nuke Archive</Button>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+             </CardHeader>
+             <CardContent className="pt-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                   {filteredHistoryItems.map(entry => (
+                     <div key={entry.id} className="group bg-background/20 border border-border/50 rounded-xl p-5 hover:border-white transition-all">
+                        <div className="flex justify-between items-start mb-4">
+                           <div className="space-y-1">
+                              <p className="text-[10px] font-black uppercase text-primary tracking-widest">{entry.provider}</p>
+                              <h4 className="text-[11px] font-black uppercase truncate max-w-[150px]">{entry.repoFullName}</h4>
+                           </div>
+                           <p className="text-[9px] font-mono text-muted-foreground">{new Date(entry.createdAt).toLocaleDateString()}</p>
+                        </div>
+                        <div className="flex items-center gap-3 pt-4 border-t border-white/5 mt-4">
+                           <Button variant="ghost" className="flex-1 h-9 text-[9px] font-black uppercase tracking-widest bg-white/5 hover:bg-white hover:text-black" onClick={() => handleApplyHistoryEntry(entry)}>Init Feed</Button>
+                           <a href={entry.deployUrl} target="_blank" className="flex-1 h-9 flex items-center justify-center border border-border/50 rounded-lg text-[9px] font-black uppercase tracking-widest hover:border-primary hover:text-primary transition-all">Re-Deploy</a>
+                        </div>
+                     </div>
+                   ))}
+                   {filteredHistoryItems.length === 0 && (
+                     <div className="col-span-full py-20 text-center opacity-30 italic text-xs font-mono">
+                       {historyItems.length === 0 ? "Archive is currently empty." : "No records matching current filters."}
+                     </div>
+                   )}
+                </div>
+             </CardContent>
+          </Card>
+        </div>
       </section>
 
       <DeployConfirmModal

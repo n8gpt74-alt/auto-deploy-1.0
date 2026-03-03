@@ -78,8 +78,14 @@ export async function GET(req: NextRequest) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), GITHUB_TIMEOUT_MS);
 
+  const org = req.nextUrl.searchParams.get("org");
+
+  const baseUrl = org 
+    ? `https://api.github.com/orgs/${org}/repos`
+    : `https://api.github.com/user/repos`;
+
   try {
-    const res = await fetch(`https://api.github.com/user/repos?per_page=${perPage}&page=${page}&sort=updated`, {
+    const res = await fetch(`${baseUrl}?per_page=${perPage}&page=${page}&sort=updated`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/vnd.github+json",
